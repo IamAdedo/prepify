@@ -24,7 +24,7 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({ mode, setMode }) => 
             Full UTME Exam Mode
           </div>
           <div className="text-xs font-normal text-gray-500 leading-relaxed font-sans">
-            Simulates the authentic 4-subject UTME examination. Requires Use of English and 3 elective subjects. 120 Minutes total duration.
+            Full 4-subject UTME practice exam. Requires Use of English and 3 elective subjects. 120 Minutes total duration.
           </div>
         </div>
         {mode === "JAMB_FULL" && (

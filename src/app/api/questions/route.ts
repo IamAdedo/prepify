@@ -1,4 +1,5 @@
 import { MOCK_JAMB_QUESTIONS } from "@/data/mockJambQuestions";
+import { encryptAnswerKey, AnswerKeyItem } from "@/lib/examCrypto";
 import { NextResponse } from "next/server";
 
 const SUBJECT_MAP: Record<string, string> = {
@@ -94,17 +95,57 @@ export async function GET(request: Request) {
       combinedQuestions.push(...formatted);
     }
 
+    // Split into a client-safe payload (no answers/explanations) and an
+    // encrypted answer key. The browser never receives the correct answers
+    // during the exam — it returns the opaque token to /api/grade at submit.
+    const answerKey: AnswerKeyItem[] = combinedQuestions
+      .filter((q) => q.answer)
+      .map((q) => ({
+        id: q.id,
+        subject: q.subject,
+        answer: q.answer as AnswerKeyItem["answer"],
+        explanation: q.explanation || undefined,
+      }));
+
+    const clientQuestions = combinedQuestions.map((q) => ({
+      id: q.id,
+      subject: q.subject,
+      question: q.question,
+      option: q.option,
+      section: q.section,
+    }));
+
+    const answerToken = encryptAnswerKey(answerKey);
+
     return NextResponse.json({
       status: 200,
       source: apiKey ? "live" : "fallback",
-      data: combinedQuestions,
+      data: clientQuestions,
+      answerToken,
     });
   } catch (error) {
-    console.error("[JAMB API Proxy Route Error]:", error);
+    console.error("[Prepify Questions API Route Error]:", error);
+    // Emergency offline buffer — still answer-stripped + tokenized.
+    const answerKey: AnswerKeyItem[] = MOCK_JAMB_QUESTIONS
+      .filter((q) => q.answer)
+      .map((q) => ({
+        id: q.id,
+        subject: q.subject,
+        answer: q.answer as AnswerKeyItem["answer"],
+        explanation: q.explanation || undefined,
+      }));
+    const clientQuestions = MOCK_JAMB_QUESTIONS.map((q) => ({
+      id: q.id,
+      subject: q.subject,
+      question: q.question,
+      option: q.option,
+      section: (q as any).section || "",
+    }));
     return NextResponse.json({
       status: 200,
       source: "fallback",
-      data: MOCK_JAMB_QUESTIONS,
+      data: clientQuestions,
+      answerToken: encryptAnswerKey(answerKey),
       error: "Remote service unreachable. Serving offline exam buffer."
     });
   }

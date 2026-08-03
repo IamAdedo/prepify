@@ -1,631 +1,148 @@
 "use client";
 
-import { ModeSelector } from "@/components/ModeSelector";
-import { ExamMode } from "@/types/jamb";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { ContactForm } from "@/components/ContactForm";
+import { Leaderboard } from "@/components/Leaderboard";
+import { WeeklyChallengeCard } from "@/components/WeeklyChallengeCard";
+import Link from "next/link";
 
-const AVAILABLE_SUBJECTS = [
-  "Mathematics", "Physics", "Chemistry", "Biology",
-  "Economics", "Government", "Literature in English", "CRK", "Commerce"
+const FEATURES = [
+  { icon: "🖥️", title: "Authentic CBT Interface", body: "8-key keyboard navigation, question map, and subject tabs that mirror the real UTME terminal." },
+  { icon: "🛡️", title: "Live Proctoring", body: "Webcam liveness, background-noise detection, tab-focus tracking, and enforced fullscreen." },
+  { icon: "📊", title: "Instant Result Slips", body: "Downloadable PDF result slip plus a watermarked answer review and key breakdown." },
+  { icon: "🏆", title: "Weekly Challenge", body: "Compete on full-UTME and per-subject leaderboards that refresh every week." },
 ];
 
-const AVAILABLE_YEARS = ["Randomized", "2023", "2022", "2021", "2020", "2019"];
-
-export default function EducationalHomepage() {
-  const router = useRouter();
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-
-  // Exam Configuration States
-  const [mode, setMode] = useState<ExamMode>("JAMB_FULL");
-  const [candidateName, setCandidateName] = useState("");
-  const [selectedElectives, setSelectedElectives] = useState<string[]>([]);
-  const [singleSubject, setSingleSubject] = useState("Mathematics");
-  const [selectedYear, setSelectedYear] = useState("Randomized");
-  const [candidateSnapshot, setCandidateSnapshot] = useState<string | null>(null);
-  
-  // Interactive Liveness Wizard States
-  const [isLivenessModalOpen, setIsLivenessModalOpen] = useState(false);
-  const [isCameraReady, setIsCameraReady] = useState(false);
-  const [livenessStep, setLivenessStep] = useState<'INIT' | 'CENTER' | 'BLINK' | 'ANALYZING' | 'SUCCESS' | 'ERROR'>('INIT');
-  const [livenessProgress, setLivenessProgress] = useState(0);
-  const [blinkCount, setBlinkCount] = useState(0);
-  const [capturedPhotos, setCapturedPhotos] = useState<string[]>([]);
-  const [cameraErrorMsg, setCameraErrorMsg] = useState("");
-
-  // Contact Form State
-  const [contactMessage, setContactMessage] = useState({ name: "", email: "", msg: "" });
-
-  const startLivenessFlow = async () => {
-    setIsLivenessModalOpen(true);
-    setLivenessStep('INIT');
-    setLivenessProgress(0);
-    setBlinkCount(0);
-    setCapturedPhotos([]);
-    setCameraErrorMsg("");
-    setIsCameraReady(false);
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 320, height: 320, facingMode: "user" }
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-      setIsCameraReady(true);
-      runLivenessSequence();
-    } catch (err) {
-      console.warn("Liveness webcam access denied:", err);
-      setLivenessStep('ERROR');
-      setCameraErrorMsg("Webcam access denied or unavailable. Verify device permissions or click Administrator Bypass below.");
-    }
-  };
-
-  const runLivenessSequence = () => {
-    // Step 1: Position/Center face
-    setLivenessStep('CENTER');
-    let progress = 0;
-    const centerInterval = setInterval(() => {
-      progress += 10;
-      setLivenessProgress(progress);
-      if (progress >= 100) {
-        clearInterval(centerInterval);
-        
-        // Step 2: Prompt to blink 3 times
-        setLivenessStep('BLINK');
-        let blinks = 0;
-        
-        const blinkInterval = setInterval(() => {
-          blinks += 1;
-          setBlinkCount(blinks);
-
-          // Capture burst photos at each blink event
-          if (videoRef.current) {
-            const canvas = document.createElement("canvas");
-            canvas.width = 300;
-            canvas.height = 300;
-            const ctx = canvas.getContext("2d");
-            if (ctx) {
-              // Flip horizontally to match mirror preview
-              ctx.translate(300, 0);
-              ctx.scale(-1, 1);
-              ctx.drawImage(videoRef.current, 0, 0, 300, 300);
-              const dataUrl = canvas.toDataURL("image/png");
-              setCapturedPhotos(prev => [...prev, dataUrl]);
-            }
-          }
-
-          if (blinks >= 3) {
-            clearInterval(blinkInterval);
-
-            // Step 3: Analyze captured snapshots
-            setLivenessStep('ANALYZING');
-            setTimeout(() => {
-              setLivenessStep('SUCCESS');
-            }, 2000);
-          }
-        }, 1200);
-      }
-    }, 200);
-  };
-
-  // Complete and extract snapshot
-  useEffect(() => {
-    if (livenessStep === 'SUCCESS' && capturedPhotos.length > 0) {
-      // Choose second photo (middle of blink sequence, eyes usually open) or final photo
-      const chosenPhoto = capturedPhotos[1] || capturedPhotos[capturedPhotos.length - 1];
-      setCandidateSnapshot(chosenPhoto);
-
-      // Stop webcam
-      setTimeout(() => {
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop());
-          streamRef.current = null;
-        }
-        setIsCameraReady(false);
-        setIsLivenessModalOpen(false);
-      }, 1500);
-    }
-  }, [livenessStep, capturedPhotos]);
-
-  // Clean up streams if modal is closed prematurely
-  const closeLivenessModal = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    setIsCameraReady(false);
-    setIsLivenessModalOpen(false);
-  };
-
-  // Admin Override Bypass
-  const handleAdminBypass = () => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 300;
-    canvas.height = 300;
-    const ctx = canvas.getContext("2d");
-    if (ctx) {
-      ctx.fillStyle = "#0A369D";
-      ctx.fillRect(0, 0, 300, 300);
-      
-      // Draw graphic background decoration
-      ctx.fillStyle = "#FFC107";
-      ctx.fillRect(0, 280, 300, 20);
-      
-      ctx.fillStyle = "#FFFFFF";
-      ctx.font = "bold 22px monospace";
-      ctx.textAlign = "center";
-      ctx.fillText("UTME CBT", 150, 80);
-      
-      ctx.font = "bold 14px sans-serif";
-      ctx.fillStyle = "#FFC107";
-      ctx.fillText("ADMIN BYPASS APPROVED", 150, 130);
-      
-      ctx.font = "12px monospace";
-      ctx.fillStyle = "#E9F1F7";
-      ctx.fillText("BIOMETRIC EXEMPTED", 150, 170);
-      ctx.fillText(`CANDIDATE: ${candidateName.trim() ? candidateName.toUpperCase().slice(0, 20) : "DEFAULT CANDIDATE"}`, 150, 210);
-      ctx.fillText(`VERIFIED SECURE`, 150, 240);
-
-      setCandidateSnapshot(canvas.toDataURL("image/png"));
-      closeLivenessModal();
-    }
-  };
-
-  const toggleElective = (sub: string) => {
-    if (selectedElectives.includes(sub)) {
-      setSelectedElectives(selectedElectives.filter((s) => s !== sub));
-    } else if (selectedElectives.length < 3) {
-      setSelectedElectives([...selectedElectives, sub]);
-    }
-  };
-
-  const handleStartExam = () => {
-    if (!candidateName.trim()) return alert("Please enter your candidate name.");
-    if (!candidateSnapshot) return alert("Please perform the biometric verification snapshot to unlock the CBT terminal.");
-
-    const finalSubjects = mode === "JAMB_FULL"
-      ? ["Use of English", ...selectedElectives]
-      : [singleSubject];
-
-    if (mode === "JAMB_FULL" && finalSubjects.length !== 4) {
-      return alert("Full JAMB Mode requires Use of English + exactly 3 electives.");
-    }
-
-    const examConfig = {
-      candidateName,
-      registrationNumber: `UTME-${Math.floor(10000000 + Math.random() * 90000000)}`,
-      candidatePhotoUrl: candidateSnapshot,
-      mode,
-      subjects: finalSubjects,
-      selectedYear,
-      durationMinutes: mode === "JAMB_FULL" ? 120 : 40,
-    };
-
-    localStorage.setItem("jamb_config", JSON.stringify(examConfig));
-    // Clear previous sessions
-    localStorage.removeItem("jamb_answers");
-    localStorage.removeItem("jamb_final_answers");
-    localStorage.removeItem("jamb_questions");
-    localStorage.removeItem("jamb_infraction_logs");
-    localStorage.removeItem("jamb_infraction_count");
-
-    router.push("/exam");
-  };
-
+export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-[#E9F1F7] flex flex-col font-sans select-none">
+    <div className="min-h-screen bg-[#E9F1F7] flex flex-col font-sans">
 
-      {/* 1. Global Navigation Header */}
+      {/* Nav */}
       <header className="bg-[#0A369D] text-white sticky top-0 z-40 shadow-lg border-b-4 border-[#FFC107]">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-white text-[#0A369D] font-black rounded-full flex items-center justify-center border-2 border-[#FFC107] text-lg shadow">
-              UTME
+          <Link href="/" className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center border-2 border-[#FFC107] shadow overflow-hidden">
+              <img src="/logo.png" alt="Prepify" className="w-full h-full object-contain p-1" onError={(e) => { const t = e.currentTarget as HTMLImageElement; t.onerror = null; t.src = "/prepify-logo.svg"; }} />
             </div>
             <div>
-              <span className="font-extrabold text-base md:text-lg uppercase tracking-wide block leading-tight">
-                JAMB CBT Portal
-              </span>
-              <span className="text-[10px] text-gray-200 font-mono">Official UTME CBT Web Terminal</span>
+              <span className="font-extrabold text-lg uppercase tracking-wide block leading-tight">Prepify</span>
+              <span className="text-[10px] text-gray-200 font-mono">UTME CBT Practice</span>
             </div>
-          </div>
+          </Link>
 
           <nav className="hidden md:flex items-center space-x-6 text-xs font-bold uppercase tracking-wider">
-            <a href="#portal" className="hover:text-[#FFC107] transition-colors">Candidate Portal</a>
-            <a href="#about" className="hover:text-[#FFC107] transition-colors">About System</a>
+            <a href="#leaderboard" className="hover:text-[#FFC107] transition-colors">Leaderboard</a>
+            <a href="#features" className="hover:text-[#FFC107] transition-colors">Features</a>
             <a href="#contact" className="hover:text-[#FFC107] transition-colors">Support</a>
           </nav>
 
-          <a
-            href="#portal"
-            className="px-4 py-2 bg-[#D9383A] hover:bg-red-700 text-white font-bold text-xs uppercase rounded shadow transition-transform hover:scale-105"
-          >
-            Access Terminal
-          </a>
+          <Link href="/setup" className="px-4 py-2 bg-[#D9383A] hover:bg-red-700 text-white font-bold text-xs uppercase rounded shadow transition-transform hover:scale-105">
+            Start Practice
+          </Link>
         </div>
       </header>
 
-      {/* 2. Educational Hero Banner */}
-      <section className="bg-[#0A369D] text-white py-12 px-4 border-b border-blue-900">
-        <div className="max-w-5xl mx-auto text-center space-y-4">
+      {/* Hero */}
+      <section className="bg-[#0A369D] text-white pt-14 pb-20 px-4">
+        <div className="max-w-5xl mx-auto text-center space-y-5">
           <span className="inline-block bg-[#FFC107] text-[#0A369D] text-xs font-extrabold px-3 py-1 rounded-full uppercase tracking-widest shadow">
-            100% Free Production-Grade UTME CBT Platform
+            100% Free UTME CBT Practice
           </span>
-          <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tight">
-            Joint Admissions and Matriculation Board Portal
+          <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tight leading-none">
+            Prepify
           </h1>
+          <p className="text-lg md:text-2xl font-bold text-[#FFC107]">Prepare you for UTME.</p>
           <p className="text-sm md:text-base text-gray-200 max-w-2xl mx-auto font-serif leading-relaxed">
-            Practice for your examination under authentic testing room conditions. Enforces fullscreen browser sandboxing, audio/webcam proctoring sensors, standard 8-key keyboard command navigation, and instant official printable result slips.
+            Sit realistic, fully-proctored CBT practice exams. Take the weekly challenge, climb the
+            leaderboards, and download a detailed result slip with an answer key breakdown — all free.
           </p>
-        </div>
-      </section>
-
-      {/* 3. Main Examination Portal Configuration Form */}
-      <section id="portal" className="py-10 px-4 max-w-4xl mx-auto w-full -mt-6">
-        <div className="bg-white border-4 border-[#0A369D] rounded-lg shadow-2xl p-6 md:p-8">
-
-          <div className="text-center border-b-4 border-[#FFC107] pb-4 mb-6">
-            <h2 className="text-2xl font-black text-[#0A369D] uppercase tracking-wide">
-              Candidate Examination Setup
-            </h2>
-            <p className="text-xs text-gray-650 font-mono">Configure Examination Mode & Perform Biometric Verification</p>
-          </div>
-
-          {/* Mode Selector Component */}
-          <ModeSelector mode={mode} setMode={setMode} />
-
-          {/* Candidate Name Input */}
-          <div className="mb-6">
-            <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Candidate Full Name (Surname First)</label>
-            <input
-              type="text"
-              value={candidateName}
-              onChange={(e) => setCandidateName(e.target.value)}
-              placeholder="e.g. ADEBAYO, OLUMIDE CHUKWUEMEKA"
-              className="w-full p-3 border-2 border-gray-300 rounded font-mono text-sm focus:border-[#0A369D] outline-none bg-gray-50 focus:bg-white transition-colors"
-            />
-          </div>
-
-          {/* Subject Configuration */}
-          {mode === "JAMB_FULL" ? (
-            <div className="mb-6 bg-gray-50 p-4 rounded border border-gray-200">
-              <h3 className="text-xs font-bold uppercase text-[#0A369D] mb-2">
-                Select Exactly 3 Elective Subjects
-              </h3>
-              <div className="flex items-center space-x-2 mb-3">
-                <span className="bg-[#0A369D] text-white text-xs font-bold px-3 py-1.5 rounded">
-                  ✓ Use of English (Mandatory)
-                </span>
-                <span className="text-xs font-mono text-gray-500 font-bold">
-                  ({selectedElectives.length}/3 Selected)
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {AVAILABLE_SUBJECTS.map((sub) => {
-                  const isSelected = selectedElectives.includes(sub);
-                  return (
-                    <button
-                      key={sub}
-                      type="button"
-                      onClick={() => toggleElective(sub)}
-                      className={`p-2 rounded text-xs font-bold border transition-all ${isSelected
-                        ? "bg-[#0A369D] text-white border-[#0A369D] shadow-sm"
-                        : "bg-white text-gray-700 border-gray-300 hover:border-gray-400"
-                      }`}
-                    >
-                      {isSelected ? "✓ " : "+ "} {sub}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4 bg-gray-50 p-4 rounded border">
-              <div>
-                <label className="block text-xs font-bold uppercase mb-2 text-gray-700">Select Practice Subject</label>
-                <select
-                  value={singleSubject}
-                  onChange={(e) => setSingleSubject(e.target.value)}
-                  className="w-full p-2.5 bg-white border-2 border-gray-300 rounded text-xs font-bold text-gray-800 focus:border-[#0A369D] outline-none"
-                >
-                  <option value="Use of English">Use of English</option>
-                  {AVAILABLE_SUBJECTS.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase mb-2 text-gray-700">Select Past Question Year</label>
-                <select
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(e.target.value)}
-                  className="w-full p-2.5 bg-white border-2 border-gray-300 rounded text-xs font-bold text-gray-800 focus:border-[#0A369D] outline-none"
-                >
-                  {AVAILABLE_YEARS.map((y) => (
-                    <option key={y} value={y}>{y}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          )}
-
-          {/* Biometric Snapshot Status */}
-          <div className="mb-6 border-2 border-dashed border-gray-300 p-4 rounded text-center bg-gray-50 flex flex-col items-center">
-            <h3 className="text-xs font-bold uppercase text-gray-700 mb-2">Required: Biometric Verification Snapshot</h3>
-            <p className="text-[10px] text-gray-550 mb-4 max-w-md leading-relaxed">
-              Verify your physical candidate identity to unlock the terminal. A face check ensures room compliance.
-            </p>
-            
-            {candidateSnapshot ? (
-              <div className="text-center flex flex-col items-center">
-                <img src={candidateSnapshot} alt="Snapshot" className="w-32 h-32 object-cover border-2 border-green-600 rounded-lg shadow-md" />
-                <span className="text-[10px] text-green-700 font-bold block mt-1.5">✓ Biometric Data Attached</span>
-                <button
-                  type="button"
-                  onClick={startLivenessFlow}
-                  className="text-[9px] text-[#D9383A] underline mt-1.5 font-bold hover:text-red-700"
-                >
-                  Retake Photo / Run Liveness Again
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={startLivenessFlow}
-                className="px-5 py-3 bg-[#0A369D] hover:bg-blue-900 text-white text-xs font-bold rounded shadow transition-all transform active:scale-95"
-              >
-                Start Identity Verification (WebCam)
-              </button>
-            )}
-          </div>
-
-          <button
-            onClick={handleStartExam}
-            className="w-full py-4 bg-[#D9383A] hover:bg-red-700 text-white font-extrabold uppercase tracking-wider rounded text-base shadow-lg transition-transform hover:scale-[1.01] duration-150"
-          >
-            Launch CBT Examination Workspace
-          </button>
-        </div>
-      </section>
-
-      {/* Liveness Verification Popup Wizard */}
-      {isLivenessModalOpen && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg border-4 border-[#0A369D] max-w-md w-full p-6 shadow-2xl relative animate-fade-in font-sans">
-            
-            {/* Close button */}
-            <button 
-              onClick={closeLivenessModal}
-              className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 text-xl font-bold font-mono"
-            >
-              ×
-            </button>
-
-            <div className="text-center mb-4 border-b pb-3 border-gray-200">
-              <h2 className="text-base font-black text-[#0A369D] uppercase tracking-wide">
-                Identity Liveness Verification
-              </h2>
-              <p className="text-[10px] text-gray-500 font-mono">Secure Biometric Verification Protocol</p>
-            </div>
-
-            {/* Video container */}
-            <div className="relative w-64 h-64 mx-auto bg-black rounded-full overflow-hidden border-4 border-[#0A369D] mb-4 shadow-lg flex items-center justify-center">
-              {livenessStep === 'ERROR' ? (
-                <div className="p-4 text-center text-[#D9383A] text-xs font-bold font-mono">
-                  ⚠️ Camera Error
-                </div>
-              ) : isCameraReady ? (
-                <>
-                  <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
-                  {/* Glowing Green target overlay */}
-                  <div className="absolute inset-4 rounded-full border-2 border-dashed border-green-400/60 animate-spin" style={{ animationDuration: '10s' }} />
-                  {/* Scan bar */}
-                  {livenessStep === 'ANALYZING' && (
-                    <div className="absolute left-0 w-full h-1 bg-green-400 top-0 animate-bounce shadow-[0_0_10px_#4ade80]" />
-                  )}
-                </>
-              ) : (
-                <div className="text-xs text-gray-400 font-mono animate-pulse">
-                  Initializing camera feed...
-                </div>
-              )}
-            </div>
-
-            {/* Steps Prompts */}
-            <div className="bg-[#E9F1F7] p-3.5 rounded border border-blue-200 text-center mb-6">
-              {livenessStep === 'INIT' && (
-                <p className="text-xs font-semibold text-gray-700 animate-pulse">Setting up secure media channels...</p>
-              )}
-              
-              {livenessStep === 'CENTER' && (
-                <div>
-                  <p className="text-xs font-bold text-gray-700 animate-pulse">Step 1: Center your face inside the target frame</p>
-                  <p className="text-[10px] text-[#0A369D] font-mono mt-1">Keep completely still for alignment</p>
-                  <div className="w-full bg-gray-250 h-2.5 rounded-full mt-3 overflow-hidden border">
-                    <div className="bg-[#0A369D] h-full transition-all duration-200" style={{ width: `${livenessProgress}%` }} />
-                  </div>
-                </div>
-              )}
-
-              {livenessStep === 'BLINK' && (
-                <div>
-                  <p className="text-xs font-black text-gray-800 uppercase animate-bounce">Step 2: Blink 3 times now!</p>
-                  <p className="text-[10px] text-gray-600 mt-1 font-mono">Liveness sensor checks eye closure states</p>
-                  <div className="flex justify-center space-x-3 mt-3">
-                    <span className={`w-8 h-8 rounded-full border flex items-center justify-center font-bold text-xs ${blinkCount >= 1 ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-400'}`}>1</span>
-                    <span className={`w-8 h-8 rounded-full border flex items-center justify-center font-bold text-xs ${blinkCount >= 2 ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-400'}`}>2</span>
-                    <span className={`w-8 h-8 rounded-full border flex items-center justify-center font-bold text-xs ${blinkCount >= 3 ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-400'}`}>3</span>
-                  </div>
-                </div>
-              )}
-
-              {livenessStep === 'ANALYZING' && (
-                <div>
-                  <p className="text-xs font-bold text-gray-850">Step 3: Analyzing biometric snapshots...</p>
-                  <p className="text-[10px] text-gray-550 mt-1 font-mono">Validating eye state: EYES OPEN check</p>
-                </div>
-              )}
-
-              {livenessStep === 'SUCCESS' && (
-                <div>
-                  <p className="text-xs font-bold text-green-700">✓ Biometrics Liveness Exceeded!</p>
-                  <p className="text-[10px] text-gray-650 mt-1 font-mono">Saving photo and synchronizing credentials...</p>
-                </div>
-              )}
-
-              {livenessStep === 'ERROR' && (
-                <div>
-                  <p className="text-xs font-bold text-[#D9383A]">{cameraErrorMsg}</p>
-                </div>
-              )}
-            </div>
-
-            {/* Bottom Actions */}
-            <div className="flex space-x-3">
-              <button 
-                onClick={closeLivenessModal}
-                className="flex-1 py-2 bg-gray-250 hover:bg-gray-300 text-gray-700 font-bold rounded text-xs transition-colors"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleAdminBypass}
-                className="flex-1 py-2 bg-[#FFC107] hover:bg-yellow-500 text-gray-900 font-extrabold rounded text-xs transition-colors border border-yellow-600 shadow-sm"
-              >
-                Admin Bypass (Skip)
-              </button>
-            </div>
-
-          </div>
-        </div>
-      )}
-
-      {/* 4. System Keybindings / Specifications Guide */}
-      <section id="about" className="py-12 bg-white border-y border-gray-200 px-4">
-        <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-          <div>
-            <span className="text-xs font-bold text-[#0A369D] uppercase tracking-widest block mb-2">Technical Specifications</span>
-            <h2 className="text-2xl font-black text-gray-900 uppercase mb-4">
-              Integrated Examination Room Rules
-            </h2>
-            <p className="text-sm text-gray-600 leading-relaxed font-serif mb-4">
-              This terminal enforces standard Joint Admissions and Matriculation Board environment settings. Attempting to bypass the sandbox will trigger security infractions and auto-submit.
-            </p>
-            <ul className="text-xs space-y-2.5 font-mono text-gray-700">
-              <li className="flex items-center space-x-2">
-                <span className="text-green-600 font-bold">✓</span>
-                <span>8-Key Controls: Select option with `A`, `B`, `C`, `D`, Navigate with `P` / `N`, Submit with `S` + `Y`.</span>
-              </li>
-              <li className="flex items-center space-x-2">
-                <span className="text-green-600 font-bold">✓</span>
-                <span>Active Proctoring: Tracks camera liveness, background noise decibels, and tab-focus status.</span>
-              </li>
-              <li className="flex items-center space-x-2">
-                <span className="text-green-600 font-bold">✓</span>
-                <span>Security Enforcement: Blocks page scrolls on keydown, copying text, selecting text, and right clicks.</span>
-              </li>
-            </ul>
-          </div>
-
-          <div className="bg-[#E9F1F7] p-6 rounded-lg border-2 border-[#0A369D]">
-            <h3 className="font-bold text-sm text-[#0A369D] uppercase mb-3 text-center border-b border-blue-200 pb-1.5">
-              CBT Terminal Keybindings Guide
-            </h3>
-            <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-              <div className="bg-white p-2 rounded border shadow-sm"><kbd className="font-bold text-[#0A369D] bg-gray-100 px-1 py-0.5 rounded mr-1">A,B,C,D</kbd> Select Option</div>
-              <div className="bg-white p-2 rounded border shadow-sm"><kbd className="font-bold text-[#0A369D] bg-gray-100 px-1 py-0.5 rounded mr-1">N</kbd> Next Question</div>
-              <div className="bg-white p-2 rounded border shadow-sm"><kbd className="font-bold text-[#0A369D] bg-gray-100 px-1 py-0.5 rounded mr-1">P</kbd> Previous Question</div>
-              <div className="bg-white p-2 rounded border shadow-sm"><kbd className="font-bold text-[#D9383A] bg-gray-100 px-1 py-0.5 rounded mr-1">S</kbd> Submit Test</div>
-              <div className="bg-white col-span-2 p-2 rounded border shadow-sm text-center">
-                <kbd className="font-bold text-green-700 bg-gray-100 px-1.5 py-0.5 rounded mr-1">Y</kbd> Confirm Submission (Only in Submission modal)
-              </div>
-            </div>
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            <Link href="/setup" className="px-7 py-3.5 bg-[#D9383A] hover:bg-red-700 text-white font-extrabold uppercase tracking-wide text-sm rounded shadow-lg transition-transform hover:scale-105">
+              Start a Practice Exam
+            </Link>
+            <Link href="/setup?challenge=weekly" className="px-7 py-3.5 bg-white/10 hover:bg-white/20 border border-white/30 text-white font-bold uppercase tracking-wide text-sm rounded shadow transition-colors">
+              This Week&apos;s Challenge
+            </Link>
           </div>
         </div>
       </section>
 
-      {/* 5. Contact Us / Support Form */}
+      {/* Weekly challenge + Leaderboard */}
+      <section id="leaderboard" className="px-4 -mt-12 pb-12">
+        <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          <WeeklyChallengeCard />
+          <Leaderboard />
+        </div>
+        <div className="max-w-6xl mx-auto text-center mt-6">
+          <Link href="/leaderboard" className="inline-block text-xs font-bold text-[#0A369D] uppercase tracking-wider hover:underline">
+            View full leaderboard →
+          </Link>
+        </div>
+      </section>
+
+      {/* Features */}
+      <section id="features" className="px-4 py-12 bg-white border-y border-gray-200">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-8">
+            <span className="text-xs font-bold text-[#0A369D] uppercase tracking-widest block mb-1">Why Prepify</span>
+            <h2 className="text-2xl md:text-3xl font-black text-gray-900 uppercase">Built to feel like the real thing</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {FEATURES.map((f) => (
+              <div key={f.title} className="bg-[#E9F1F7] rounded-lg border border-blue-200 p-5">
+                <div className="text-3xl mb-2">{f.icon}</div>
+                <h3 className="font-bold text-[#0A369D] text-sm uppercase mb-1.5">{f.title}</h3>
+                <p className="text-xs text-gray-600 leading-relaxed">{f.body}</p>
+              </div>
+            ))}
+          </div>
+          <div className="text-center mt-10">
+            <Link href="/setup" className="inline-block px-8 py-3.5 bg-[#0A369D] hover:bg-blue-900 text-white font-extrabold uppercase tracking-wide text-sm rounded shadow-lg transition-transform hover:scale-105">
+              Configure Your Exam →
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Contact */}
       <section id="contact" className="py-12 px-4 max-w-3xl mx-auto w-full">
         <div className="bg-white p-6 rounded-lg border-2 border-gray-300 shadow-md">
           <h2 className="text-xl font-black text-[#0A369D] uppercase text-center mb-2">Technical Support & Feedback</h2>
-          <p className="text-xs text-gray-500 text-center font-mono mb-6">Contact the CBT Terminal administrator for assistance or questions.</p>
-
-          <form onSubmit={(e) => { e.preventDefault(); alert("Feedback logged successfully. Thank you!"); }} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <input
-                type="text"
-                placeholder="Full Name"
-                required
-                value={contactMessage.name}
-                onChange={(e) => setContactMessage({ ...contactMessage, name: e.target.value })}
-                className="p-2.5 border rounded text-xs outline-none focus:border-[#0A369D]"
-              />
-              <input
-                type="email"
-                placeholder="Email Address"
-                required
-                value={contactMessage.email}
-                onChange={(e) => setContactMessage({ ...contactMessage, email: e.target.value })}
-                className="p-2.5 border rounded text-xs outline-none focus:border-[#0A369D]"
-              />
-            </div>
-            <textarea
-              rows={4}
-              placeholder="Your Message..."
-              required
-              value={contactMessage.msg}
-              onChange={(e) => setContactMessage({ ...contactMessage, msg: e.target.value })}
-              className="w-full p-2.5 border rounded text-xs outline-none focus:border-[#0A369D]"
-            ></textarea>
-            <button
-              type="submit"
-              className="w-full py-2.5 bg-[#0A369D] hover:bg-blue-900 text-white font-bold text-xs uppercase rounded shadow transition-colors"
-            >
-              Submit Ticket
-            </button>
-          </form>
+          <p className="text-xs text-gray-500 text-center font-mono mb-6">Contact the Prepify team for assistance or questions.</p>
+          <ContactForm />
         </div>
       </section>
 
-      {/* 6. Comprehensive Educational Footer */}
-      <footer className="bg-[#0A369D] text-white mt-auto border-t-4 border-[#FFC107] text-xs select-none">
+      {/* Footer */}
+      <footer className="bg-[#0A369D] text-white mt-auto border-t-4 border-[#FFC107] text-xs">
         <div className="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
-            <h4 className="font-extrabold uppercase text-sm mb-2 text-[#FFC107]">JAMB UTME CBT Portal</h4>
+            <h4 className="font-extrabold uppercase text-sm mb-2 text-[#FFC107]">Prepify</h4>
             <p className="text-gray-300 leading-relaxed font-serif text-[11px]">
-              A finished, ultra-secure production-ready computer-based test platform designed to let candidates prepare under real Nigerian examination protocols.
+              A free, secure computer-based test practice platform that helps candidates prepare for
+              UTME under realistic examination conditions.
             </p>
           </div>
-
           <div>
-            <h4 className="font-bold uppercase mb-2 text-[#FFC107]">CBT Navigation</h4>
+            <h4 className="font-bold uppercase mb-2 text-[#FFC107]">Navigate</h4>
             <ul className="space-y-1 font-mono text-[11px] text-gray-300">
-              <li><a href="#portal" className="hover:underline">Setup Setup Portal</a></li>
-              <li><a href="#about" className="hover:underline">Keyboard Keys Info</a></li>
-              <li><a href="#contact" className="hover:underline">Admin Contact Form</a></li>
+              <li><Link href="/setup" className="hover:underline">Start Practice</Link></li>
+              <li><Link href="/setup?challenge=weekly" className="hover:underline">Weekly Challenge</Link></li>
+              <li><a href="#leaderboard" className="hover:underline">Leaderboard</a></li>
+              <li><a href="#contact" className="hover:underline">Support</a></li>
             </ul>
           </div>
-
           <div>
             <h4 className="font-bold uppercase mb-2 text-[#FFC107]">System Status</h4>
             <p className="text-gray-300 text-[11px] font-mono">
               Terminal: <span className="text-green-400 font-bold">READY</span><br />
-              Network: Secure SSL / Offline Fallback<br />
-              Vercel Deployment: Optimized & Ready
+              Practice mode • Not affiliated with any examination board
             </p>
           </div>
         </div>
-
         <div className="bg-black/30 py-3 text-center border-t border-white/10 font-mono text-[11px]">
-          © {new Date().getFullYear()} JAMB CBT Portal by IamAdedo
+          © {new Date().getFullYear()} Prepify — UTME CBT Practice Platform
         </div>
       </footer>
-
     </div>
   );
 }

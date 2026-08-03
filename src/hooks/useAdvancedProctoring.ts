@@ -9,14 +9,41 @@ export const useAdvancedProctoring = ({ onTerminate, maxNoiseDecibels = 60 }: Pr
   const [tabSwitchGraceSeconds, setTabSwitchGraceSeconds] = useState<number | null>(null);
   const [audioNoiseWarning, setAudioNoiseWarning] = useState<boolean>(false);
   const [multiPersonWarning, setMultiPersonWarning] = useState<string | null>(null);
+  // Countdown shown when the candidate has left the camera frame. When it hits
+  // zero the exam is auto-submitted.
+  const [noPersonGraceSeconds, setNoPersonGraceSeconds] = useState<number | null>(null);
   const [infractionLogs, setInfractionLogs] = useState<string[]>([]);
   const [infractionCount, setInfractionCount] = useState<number>(0);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
   const graceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
   const multiPersonTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const noPersonTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastNoiseLoggedRef = useRef<number>(0);
+  const lastPresenceLoggedRef = useRef<number>(0);
+  // Set true when the candidate is intentionally submitting so we don't log the
+  // resulting fullscreen exit as a security violation.
+  const isSubmittingRef = useRef<boolean>(false);
+
+  // Release the proctoring microphone immediately. Called on submit and unmount.
+  const stopAudioMonitoring = useCallback(() => {
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach((t) => t.stop());
+      audioStreamRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {/* already closed */});
+      audioContextRef.current = null;
+    }
+  }, []);
+
+  const beginSubmission = useCallback(() => {
+    isSubmittingRef.current = true;
+    // Stop the mic the instant the candidate submits — don't wait for unmount.
+    stopAudioMonitoring();
+  }, [stopAudioMonitoring]);
 
   // Initialize state from localStorage if available
   useEffect(() => {
@@ -68,8 +95,16 @@ export const useAdvancedProctoring = ({ onTerminate, maxNoiseDecibels = 60 }: Pr
     let animationFrameId: number;
 
     const setupAudio = async () => {
+      // Don't (re)acquire the mic if the candidate already submitted.
+      if (isSubmittingRef.current) return;
       try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // If submission happened while permission was pending, release at once.
+        if (isSubmittingRef.current) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        audioStreamRef.current = stream;
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
         const source = audioContextRef.current.createMediaStreamSource(stream);
         const analyser = audioContextRef.current.createAnalyser();
@@ -107,10 +142,9 @@ export const useAdvancedProctoring = ({ onTerminate, maxNoiseDecibels = 60 }: Pr
 
     return () => {
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
-      if (stream) stream.getTracks().forEach((t) => t.stop());
-      if (audioContextRef.current) audioContextRef.current.close();
+      stopAudioMonitoring();
     };
-  }, [maxNoiseDecibels, registerViolation]);
+  }, [maxNoiseDecibels, registerViolation, stopAudioMonitoring]);
 
   // 2. Tab Focus Loss and Fullscreen Changes
   useEffect(() => {
@@ -145,7 +179,8 @@ export const useAdvancedProctoring = ({ onTerminate, maxNoiseDecibels = 60 }: Pr
     const handleFullscreenChange = () => {
       const active = !!document.fullscreenElement;
       setIsFullscreen(active);
-      if (!active) {
+      // Don't flag the fullscreen exit that happens during intentional submit.
+      if (!active && !isSubmittingRef.current) {
         registerViolation("Exited required fullscreen mode.", true);
       }
     };
@@ -173,14 +208,32 @@ export const useAdvancedProctoring = ({ onTerminate, maxNoiseDecibels = 60 }: Pr
     };
   }, [onTerminate, registerViolation]);
 
-  // 3. Multi-Person Detection Alerts
+  // 3. Camera presence detection — multi-person and no-person (candidate left).
+  const clearNoPerson = useCallback(() => {
+    if (noPersonTimerRef.current) {
+      clearInterval(noPersonTimerRef.current);
+      noPersonTimerRef.current = null;
+    }
+    setNoPersonGraceSeconds((prev) => (prev === null ? prev : null));
+  }, []);
+
+  const clearMultiPerson = useCallback(() => {
+    if (multiPersonTimerRef.current) {
+      clearTimeout(multiPersonTimerRef.current);
+      multiPersonTimerRef.current = null;
+    }
+  }, []);
+
   const triggerMultiPersonAlert = useCallback((detectedCount: number) => {
     if (detectedCount > 1) {
+      // More than one face in frame.
+      clearNoPerson();
       const msg = `Security warning: Multiple people (${detectedCount}) detected in camera frame.`;
       setMultiPersonWarning(msg);
-      
+
       const now = Date.now();
-      if (now - lastNoiseLoggedRef.current > 15000) {
+      if (now - lastPresenceLoggedRef.current > 15000) {
+        lastPresenceLoggedRef.current = now;
         registerViolation("Multiple individuals detected in camera feed.", false);
       }
 
@@ -190,30 +243,59 @@ export const useAdvancedProctoring = ({ onTerminate, maxNoiseDecibels = 60 }: Pr
         }, 60000);
       }
     } else if (detectedCount === 0) {
-      const msg = "Security warning: No candidate detected in camera frame.";
-      setMultiPersonWarning(msg);
-      
+      // No one in frame — the candidate has left the exam. Start a 60s countdown
+      // and auto-submit if they don't return.
+      clearMultiPerson();
+      setMultiPersonWarning("Candidate left the exam — no one detected in the camera frame.");
+
+      if (noPersonTimerRef.current) return; // countdown already running
+
       const now = Date.now();
-      if (now - lastNoiseLoggedRef.current > 15000) {
-        registerViolation("No candidate detected in camera feed.", false);
+      if (now - lastPresenceLoggedRef.current > 15000) {
+        lastPresenceLoggedRef.current = now;
+        registerViolation("Candidate left the exam (no person in camera feed).", true);
       }
+
+      setNoPersonGraceSeconds(60);
+      noPersonTimerRef.current = setInterval(() => {
+        setNoPersonGraceSeconds((prev) => {
+          if (prev === null || prev <= 1) {
+            if (noPersonTimerRef.current) {
+              clearInterval(noPersonTimerRef.current);
+              noPersonTimerRef.current = null;
+            }
+            onTerminate("Exam terminated: Candidate left the exam and did not return within 60 seconds.");
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
     } else {
+      // Exactly one candidate present — clear all presence warnings.
       setMultiPersonWarning(null);
-      if (multiPersonTimerRef.current) {
-        clearTimeout(multiPersonTimerRef.current);
-        multiPersonTimerRef.current = null;
-      }
+      clearMultiPerson();
+      clearNoPerson();
     }
-  }, [onTerminate, registerViolation]);
+  }, [onTerminate, registerViolation, clearNoPerson, clearMultiPerson]);
+
+  // Clear presence timers on unmount.
+  useEffect(() => {
+    return () => {
+      if (multiPersonTimerRef.current) clearTimeout(multiPersonTimerRef.current);
+      if (noPersonTimerRef.current) clearInterval(noPersonTimerRef.current);
+    };
+  }, []);
 
   return {
     tabSwitchGraceSeconds,
     audioNoiseWarning,
     multiPersonWarning,
+    noPersonGraceSeconds,
     infractionLogs,
     infractionCount,
     isFullscreen,
     requestFullscreen,
+    beginSubmission,
     triggerMultiPersonAlert,
   };
 };

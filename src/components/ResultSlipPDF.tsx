@@ -1,67 +1,76 @@
-import { ExamConfig, Question, UserAnswers } from "@/types/jamb";
+import { ExamConfig, GradeResult } from "@/types/jamb";
+import { summarizeSecurityEvents } from "@/lib/securityEvents";
 import React from "react";
 
 interface ResultSlipProps {
   config: ExamConfig;
-  questions: Question[];
-  answers: UserAnswers;
+  // Authoritative scores from /api/grade — the client never sees the answer key.
+  grade: GradeResult;
   infractionLogs: string[];
+  // Forwarded ref target so the parent can render this to PDF.
+  slipRef?: React.RefObject<HTMLDivElement>;
+  onExportPdf?: () => void;
+  isExporting?: boolean;
 }
 
 export const ResultSlipPDF: React.FC<ResultSlipProps> = ({
   config,
-  questions,
-  answers,
+  grade,
   infractionLogs,
+  slipRef,
+  onExportPdf,
+  isExporting,
 }) => {
-  // Aggregate subject score calculation
-  const subjectScores: Record<string, { correct: number; total: number }> = {};
-
-  questions.forEach((q) => {
-    const sub = q.subject || "General";
-    if (!subjectScores[sub]) subjectScores[sub] = { correct: 0, total: 0 };
-    subjectScores[sub].total += 1;
-
-    if (answers[q.id]?.toLowerCase() === q.answer.toLowerCase()) {
-      subjectScores[sub].correct += 1;
-    }
-  });
-
-  const totalQuestions = questions.length || 1;
-  const totalCorrect = Object.values(subjectScores).reduce((acc, curr) => acc + curr.correct, 0);
-  const aggregateScore = Math.round((totalCorrect / totalQuestions) * 400);
+  // Scores come straight from the server-authoritative grade result.
+  const subjectScores = grade.subjectScores;
+  const aggregateScore = grade.aggregateScore;
 
   // Encode candidate verification payload into standard QR service URL
   const qrVerificationUrl = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(
-    `JAMB-VERIFIED|REG:${config.registrationNumber}|SCORE:${aggregateScore}/400|NAME:${config.candidateName}`
+    `PREPIFY-PRACTICE|REG:${config.registrationNumber}|SCORE:${aggregateScore}/400|NAME:${config.candidateName}`
   )}`;
 
+  const eventSummary = summarizeSecurityEvents(infractionLogs);
+
   const handlePrint = () => {
-    window.print();
+    if (onExportPdf) onExportPdf();
+    else window.print();
   };
 
   return (
-    <div className="max-w-4xl mx-auto bg-white p-8 rounded border-4 border-[#0A369D] shadow-2xl print:shadow-none print:border-none font-sans select-none">
+    <div
+      ref={slipRef}
+      className="max-w-4xl mx-auto bg-white p-8 rounded border-4 border-[#0A369D] shadow-2xl print:shadow-none print:border-none font-sans select-none"
+    >
 
       {/* Official Header */}
       <div className="flex items-center justify-between border-b-4 border-[#FFC107] pb-4 mb-6">
         <div className="flex items-center space-x-4">
-          <div className="w-16 h-16 bg-[#0A369D] text-white font-extrabold rounded-full flex items-center justify-center text-xl border-2 border-[#FFC107]">
-            UTME
+          <div className="w-16 h-16 bg-[#0A369D] rounded-full flex items-center justify-center border-2 border-[#FFC107] overflow-hidden">
+            <img
+              src="/logo.png"
+              alt="Prepify"
+              className="w-full h-full object-contain p-1.5"
+              onError={(e) => {
+                const t = e.currentTarget as HTMLImageElement;
+                t.onerror = null;
+                t.src = "/prepify-logo.svg";
+              }}
+            />
           </div>
           <div>
             <h1 className="text-xl font-black text-[#0A369D] uppercase tracking-wide">
-              Joint Admissions and Matriculation Board
+              Prepify
             </h1>
-            <p className="text-xs font-mono text-gray-600">OFFICIAL UTME CBT EXAMINATION RESULT SLIP</p>
-            <p className="text-[10px] text-gray-400">Issued by Platform Simulator Terminal • Site: jamb-cbt-sim.vercel.app</p>
+            <p className="text-xs font-mono text-gray-600">UTME CBT PRACTICE RESULT SLIP</p>
+            <p className="text-[10px] text-gray-400">Practice document — not an official examination result • prepify.app</p>
           </div>
         </div>
 
         {/* Verification QR */}
         <div className="text-center">
           <img src={qrVerificationUrl} alt="Verification QR" className="w-20 h-20 border p-1 rounded" />
-          <span className="text-[9px] font-mono text-gray-500 block mt-1">Official Scan QR</span>
+          <span className="text-[9px] font-mono text-gray-500 block mt-1">Practice Scan QR</span>
         </div>
       </div>
 
@@ -124,29 +133,44 @@ export const ResultSlipPDF: React.FC<ResultSlipProps> = ({
           </tr>
         </thead>
         <tbody>
-          {Object.entries(subjectScores).map(([sub, data]) => {
-            const scaled = Math.round((data.correct / (data.total || 1)) * 100);
-            return (
-              <tr key={sub} className="border-b hover:bg-gray-50">
-                <td className="border p-2 font-bold">{sub}</td>
-                <td className="border p-2 text-center text-green-700 font-bold">{data.correct}</td>
-                <td className="border p-2 text-center">{data.total}</td>
-                <td className="border p-2 text-right font-bold text-[#0A369D]">{scaled}</td>
-              </tr>
-            );
-          })}
+          {subjectScores.map((data) => (
+            <tr key={data.subject} className="border-b hover:bg-gray-50">
+              <td className="border p-2 font-bold">{data.subject}</td>
+              <td className="border p-2 text-center text-green-700 font-bold">{data.correct}</td>
+              <td className="border p-2 text-center">{data.total}</td>
+              <td className="border p-2 text-right font-bold text-[#0A369D]">{data.scaledScore}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
 
-      {/* Proctoring Log Summary */}
-      {infractionLogs.length > 0 && (
+      {/* Proctoring Log Summary — one line per event type with occurrence count */}
+      {eventSummary.length > 0 && (
         <div className="mb-6 bg-red-50 border border-red-200 p-3 rounded">
-          <h4 className="text-[11px] font-bold text-[#D9383A] uppercase mb-1">Proctoring Security Event Log</h4>
-          <ul className="text-[10px] font-mono text-gray-700 list-disc pl-4 space-y-1">
-            {infractionLogs.map((log, i) => (
-              <li key={i}>{log}</li>
-            ))}
-          </ul>
+          <h4 className="text-[11px] font-bold text-[#D9383A] uppercase mb-2">Proctoring Security Event Log</h4>
+          <table className="w-full text-[10px] font-mono">
+            <tbody>
+              {eventSummary.map((ev) => (
+                <tr key={ev.label} className="border-b border-red-100 last:border-0">
+                  <td className="py-1">
+                    <span
+                      className={`inline-block w-2 h-2 rounded-full mr-2 align-middle ${
+                        ev.severity === "CRITICAL"
+                          ? "bg-[#D9383A]"
+                          : ev.severity === "WARNING"
+                          ? "bg-[#FFC107]"
+                          : "bg-gray-400"
+                      }`}
+                    />
+                    {ev.label}
+                  </td>
+                  <td className="py-1 text-right font-bold text-gray-800 whitespace-nowrap">
+                    {ev.count} {ev.count === 1 ? "time" : "times"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -154,9 +178,10 @@ export const ResultSlipPDF: React.FC<ResultSlipProps> = ({
       <div className="flex justify-end space-x-3 print:hidden">
         <button
           onClick={handlePrint}
-          className="px-6 py-3 bg-[#0A369D] hover:bg-blue-900 text-white text-xs font-extrabold uppercase rounded shadow"
+          disabled={isExporting}
+          className="px-6 py-3 bg-[#0A369D] hover:bg-blue-900 disabled:opacity-60 text-white text-xs font-extrabold uppercase rounded shadow"
         >
-          🖨️ Export / Print PDF Result Slip
+          {isExporting ? "Preparing PDFs…" : "⬇ Export / Print PDF Result Slip"}
         </button>
       </div>
     </div>

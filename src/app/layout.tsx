@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Joint Admissions and Matriculation Board (JAMB) CBT Portal",
-  description: "Official UTME CBT Web Terminal. Real-time proctoring sandbox, 8-key keyboard command navigation, and printable result slips.",
+  title: "Prepify — UTME CBT Practice Platform",
+  description: "Prepify helps you prepare for UTME under authentic CBT conditions: real-time proctoring, 8-key keyboard navigation, weekly challenges, leaderboards, and printable practice result slips.",
 };
 
 export default function RootLayout({

@@ -20,12 +20,12 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   return (
     <header className="bg-jamb-blue text-white p-3 md:p-4 shadow-md flex flex-wrap items-center justify-between select-none border-b-4 border-jamb-gold">
       <div className="flex items-center space-x-3">
-        <div className="w-10 h-10 bg-white text-jamb-blue font-bold rounded-full flex items-center justify-center border-2 border-jamb-gold">
-          UTME
+        <div className="w-10 h-10 bg-white text-jamb-blue font-bold rounded-full flex items-center justify-center border-2 border-jamb-gold overflow-hidden">
+          <img src="/logo.png" alt="Prepify" className="w-full h-full object-contain p-0.5" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
         </div>
         <div>
           <h1 className="font-bold text-sm md:text-base leading-tight uppercase tracking-wide">
-            Joint Admissions and Matriculation Board
+            Prepify <span className="text-jamb-gold">UTME Practice</span>
           </h1>
           <p className="text-xs text-jamb-blue-light font-mono">
             Candidate: <span className="text-yellow-300">{candidateName}</span> ({registrationNumber})
