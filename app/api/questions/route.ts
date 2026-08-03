@@ -1,30 +1,25 @@
 import { MOCK_JAMB_QUESTIONS } from "@/data/mockJambQuestions";
 import { NextResponse } from "next/server";
-
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const subject = searchParams.get("subject") || "english";
+  const year = searchParams.get("year");
   const apiKey = process.env.ALOC_API_KEY;
 
   if (!apiKey) {
-    console.warn("[JAMB API] ALOC_API_KEY missing. Returning fallback dataset.");
     return NextResponse.json({ status: 200, source: "mock", data: MOCK_JAMB_QUESTIONS });
   }
 
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000); // 4-second fail-safe timeout
+    let url = `https://questions.aloc.ng/api/v2/q/40?subject=${subject}`;
+    if (year && year !== "Randomized") {
+      url += `&year=${year}`;
+    }
 
-    const response = await fetch(`https://questions.aloc.ng/api/v2/q/40?subject=${subject}`, {
-      headers: {
-        "AccessToken": apiKey,
-        "Accept": "application/json",
-      },
-      signal: controller.signal,
-      next: { revalidate: 3600 }, // Cache responses for 1 hour on Vercel Edge
+    const response = await fetch(url, {
+      headers: { "AccessToken": apiKey },
+      next: { revalidate: 3600 },
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(`ALOC API returned HTTP ${response.status}`);

@@ -18,6 +18,42 @@ export interface Question {
   explanation?: string;
 }
 
+export interface Question {
+  id: number;
+  subject: string;
+  year?: string;
+  question: string;
+  optionA: string;
+  optionB: string;
+  optionC: string;
+  optionD: string;
+  correctOption: "A" | "B" | "C" | "D";
+  explanation?: string;
+  imageUrl?: string;
+}
+
+export interface SubjectScore {
+  subject: string;
+  totalQuestions: number;
+  answeredCount: number;
+  correctCount: number;
+  rawPercentage: number;
+  scaledScore: number; // Scaled to 100 per subject
+}
+
+export interface ExamResults {
+  candidateName: string;
+  registrationNumber: string;
+  dateCompleted: string;
+  mode: ExamMode;
+  overallScore: number; // Scaled to 400 for JAMB_FULL
+  subjectScores: SubjectScore[];
+  infractionCount: number;
+}
+export interface UserAnswers {
+  [questionId: number]: "A" | "B" | "C" | "D";
+}
+
 export type UserAnswers = Record<number, 'A' | 'B' | 'C' | 'D'>;
 
 export interface ExamSessionState {

@@ -1,7 +1,9 @@
+"use client";
+
 import { useEffect } from "react";
 
-interface KeybindingProps {
-  onSelectOption: (option: 'A' | 'B' | 'C' | 'D') => void;
+interface KeybindingsProps {
+  onSelectOption: (option: "A" | "B" | "C" | "D") => void;
   onNext: () => void;
   onPrevious: () => void;
   onSubmitPrompt: () => void;
@@ -9,48 +11,59 @@ interface KeybindingProps {
   isModalOpen: boolean;
 }
 
-export const useJambKeybindings = ({
+export function useJambKeybindings({
   onSelectOption,
   onNext,
   onPrevious,
   onSubmitPrompt,
   onConfirmSubmit,
   isModalOpen,
-}: KeybindingProps) => {
+}: KeybindingsProps) {
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Prevent keybindings inside input fields if any exist
-      if (["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName)) return;
-
-      const key = e.key.toUpperCase();
-
-      // Block defaults for exam control keys
-      if (['A', 'B', 'C', 'D', 'N', 'P', 'S', 'Y', ' '].includes(key)) {
-        if (e.key === ' ' || key === 'P') e.preventDefault(); // Prevent page scroll
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Avoid key triggers when candidate is typing in an input or textarea
+      const target = event.target as HTMLElement;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) {
+        return;
       }
 
+      const key = event.key.toUpperCase();
+
       if (isModalOpen) {
-        if (key === 'Y') {
-          e.preventDefault();
+        if (key === "Y") {
+          event.preventDefault();
           onConfirmSubmit();
         }
         return;
       }
 
       switch (key) {
-        case 'A':
-        case 'B':
-        case 'C':
-        case 'D':
-          onSelectOption(key as 'A' | 'B' | 'C' | 'D');
+        case "A":
+          event.preventDefault();
+          onSelectOption("A");
           break;
-        case 'N':
+        case "B":
+          event.preventDefault();
+          onSelectOption("B");
+          break;
+        case "C":
+          event.preventDefault();
+          onSelectOption("C");
+          break;
+        case "D":
+          event.preventDefault();
+          onSelectOption("D");
+          break;
+        case "N":
+          event.preventDefault();
           onNext();
           break;
-        case 'P':
+        case "P":
+          event.preventDefault();
           onPrevious();
           break;
-        case 'S':
+        case "S":
+          event.preventDefault();
           onSubmitPrompt();
           break;
         default:
@@ -61,4 +74,4 @@ export const useJambKeybindings = ({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onSelectOption, onNext, onPrevious, onSubmitPrompt, onConfirmSubmit, isModalOpen]);
-};
+}
