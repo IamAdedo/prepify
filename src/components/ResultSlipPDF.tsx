@@ -24,10 +24,13 @@ export const ResultSlipPDF: React.FC<ResultSlipProps> = ({
   // Scores come straight from the server-authoritative grade result.
   const subjectScores = grade.subjectScores;
   const aggregateScore = grade.aggregateScore;
+  // Each subject is scaled to 100 marks, so the ceiling is 100 × subject count:
+  // 400 for a full UTME (4 subjects), 100 for a single-subject drill.
+  const maxAggregate = Math.max(100, subjectScores.length * 100);
 
   // Encode candidate verification payload into standard QR service URL
   const qrVerificationUrl = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(
-    `PREPIFY-PRACTICE|REG:${config.registrationNumber}|SCORE:${aggregateScore}/400|NAME:${config.candidateName}`
+    `PREPIFY-PRACTICE|REG:${config.registrationNumber}|SCORE:${aggregateScore}/${maxAggregate}|NAME:${config.candidateName}`
   )}`;
 
   const eventSummary = summarizeSecurityEvents(infractionLogs);
@@ -114,10 +117,14 @@ export const ResultSlipPDF: React.FC<ResultSlipProps> = ({
       <div className="bg-[#0A369D] text-white p-4 rounded-lg flex items-center justify-between mb-6 shadow">
         <div>
           <span className="text-xs uppercase tracking-wider text-[#E9F1F7] block">Aggregate UTME Score</span>
-          <span className="text-xs text-yellow-300">Scaled to standard 400-point ceiling</span>
+          <span className="text-xs text-yellow-300">
+            {config.mode === "JAMB_FULL"
+              ? "Scaled to standard 400-point ceiling"
+              : "Single-subject drill • scaled to 100"}
+          </span>
         </div>
         <div className="text-4xl font-black font-mono text-[#FFC107]">
-          {aggregateScore} <span className="text-xl text-white">/ 400</span>
+          {aggregateScore} <span className="text-xl text-white">/ {maxAggregate}</span>
         </div>
       </div>
 

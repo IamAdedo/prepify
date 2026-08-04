@@ -75,7 +75,11 @@ export async function POST(request: Request) {
     scaledScore: Math.round((d.correct / (d.total || 1)) * 100),
   }));
 
-  const aggregateScore = Math.round((totalCorrect / (totalQuestions || 1)) * 400);
+  // Marks are equal per subject: each subject is scaled to 100, and the
+  // aggregate is the SUM of those scaled scores — NOT a per-question ratio.
+  // So a full UTME (4 subjects) tops out at 400 and a single drill at 100,
+  // regardless of how many questions each subject carried (English 60 vs 40).
+  const aggregateScore = subjectScores.reduce((sum, s) => sum + s.scaledScore, 0);
 
   // Record the weekly-challenge entry SERVER-SIDE (authoritative).
   let leaderboardRecorded = false;

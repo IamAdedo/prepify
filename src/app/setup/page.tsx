@@ -190,6 +190,18 @@ export default function CandidateSetupPage() {
       return alert("Full UTME Mode requires Use of English + exactly 3 electives.");
     }
 
+    // Durations:
+    //  • Full UTME → 120 min (2 hrs) for all 4 subjects.
+    //  • Single drill (100 questions) → 90 min, but the calculation-heavy
+    //    subjects (Mathematics/Physics/Chemistry) get 120 min.
+    const HEAVY_DRILL = new Set(["mathematics", "physics", "chemistry"]);
+    const durationMinutes =
+      mode === "JAMB_FULL"
+        ? 120
+        : HEAVY_DRILL.has(singleSubject.toLowerCase())
+        ? 120
+        : 90;
+
     const examConfig = {
       candidateName,
       registrationNumber: generateRegistrationNumber(),
@@ -197,7 +209,7 @@ export default function CandidateSetupPage() {
       mode,
       subjects: finalSubjects,
       selectedYear,
-      durationMinutes: mode === "JAMB_FULL" ? 120 : 40,
+      durationMinutes,
       isWeeklyChallenge,
       weekKey: isWeeklyChallenge ? getIsoWeekKey() : undefined,
       startedAt: Date.now(),
@@ -211,7 +223,7 @@ export default function CandidateSetupPage() {
     try {
       const subjectsParam = finalSubjects.join(",");
       const yearParam = selectedYear && selectedYear !== "Randomized" ? `&year=${selectedYear}` : "";
-      const res = await fetch(`/api/questions?subject=${encodeURIComponent(subjectsParam)}${yearParam}`);
+      const res = await fetch(`/api/questions?subject=${encodeURIComponent(subjectsParam)}${yearParam}&mode=${mode}`);
       if (!res.ok) throw new Error(`Question service returned ${res.status}`);
       const json = await res.json();
       const questions = json.data || [];
@@ -454,7 +466,7 @@ export default function CandidateSetupPage() {
           <button
             onClick={handleStartExam}
             disabled={isLaunching}
-            className="w-full py-4 bg-[#D9383A] hover:bg-red-700 disabled:opacity-70 disabled:cursor-wait text-white font-extrabold uppercase tracking-wider rounded text-base shadow-lg transition-transform hover:scale-[1.01] duration-150"
+            className="w-full py-4 bg-green-600 hover:bg-green-700 disabled:opacity-70 disabled:cursor-wait text-white font-extrabold uppercase tracking-wider rounded text-base shadow-lg transition-transform hover:scale-[1.01] duration-150"
           >
             {isLaunching ? "Preparing Secure Exam Buffer…" : "Launch CBT Examination Workspace"}
           </button>

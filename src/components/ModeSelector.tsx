@@ -24,7 +24,7 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({ mode, setMode }) => 
             Full UTME Exam Mode
           </div>
           <div className="text-xs font-normal text-gray-500 leading-relaxed font-sans">
-            Full 4-subject UTME practice exam. Requires Use of English and 3 elective subjects. 120 Minutes total duration.
+            Full 4-subject UTME practice exam. Requires Use of English (60 questions) and 3 electives (40 each). 120 Minutes total duration.
           </div>
         </div>
         {mode === "JAMB_FULL" && (
@@ -49,7 +49,7 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({ mode, setMode }) => 
             Single Subject Practice
           </div>
           <div className="text-xs font-normal text-gray-500 leading-relaxed font-sans">
-            Focus on a single chosen subject. Select a specific past examination year or randomized questions. 40 Minutes duration.
+            Focus on a single chosen subject — 100 questions. Select a specific past examination year or randomized questions. 90 Minutes (120 for Mathematics, Physics & Chemistry).
           </div>
         </div>
         {mode === "PRACTICE_SINGLE" && (

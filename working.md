@@ -192,6 +192,22 @@ Also: drop your logo at `public/logo.png` (falls back to `prepify-logo.svg`).
 ---
 
 ## 5. Changelog
+- **Exam structure & scoring model (per spec):**
+  - **Full UTME:** Use of English = **60 questions**, each other subject = **40**;
+    120 min total. **Single drill:** **100 questions**, 90 min — except
+    Mathematics/Physics/Chemistry, which get **120 min**.
+  - **Equal marks:** every subject is scaled to **100 marks** regardless of its
+    question count. Aggregate is now the **sum of subject scaled scores** (full =
+    /400, single drill = /100) — no longer a per-question ratio
+    (`grade/route.ts`).
+  - `GET /api/questions` now takes a `mode` param and **paginates ALOC**
+    (`limit=40`, cursor) to the exact per-subject target count, with a random-year
+    pass for variety + all-years top-up, de-dupe, and shuffle. Dropped
+    `random=true` (capped at 10/call). Mock fallback unchanged.
+  - `ResultSlipPDF` aggregate ceiling is now **dynamic** (`subjects × 100`) instead
+    of hardcoded `/400`; QR + "scaled" caption follow suit. `ModeSelector` copy
+    updated to the new counts/durations.
+  - **Launch button** recoloured **green** (`bg-green-600`).
 - **Production fixes (post-deploy):**
   - **ALOC questions were falling back to mock in production** — the route
     targeted `questions.aloc.ng`, a dead/parked host (DNS `ENOTFOUND`
