@@ -192,6 +192,22 @@ Also: drop your logo at `public/logo.png` (falls back to `prepify-logo.svg`).
 ---
 
 ## 5. Changelog
+- **Production fixes (post-deploy):**
+  - **ALOC questions were falling back to mock in production** — the route
+    targeted `questions.aloc.ng`, a dead/parked host (DNS `ENOTFOUND`
+    everywhere, incl. Vercel). Switched to the live developer portal
+    `dev.aloc.com.ng/api/v1/questions` with the `X-API-Key` header
+    (verified against the real key), `random=true&limit=40`. Now parses the
+    `{ data }` envelope + `{ text, options:{A..D}, correctAnswer }` shape and
+    uses the correct subject slugs (`english-language`,
+    `christian-religious-studies`, `literature-in-english`, …). `source` flag
+    now reports `live` only when ALOC actually returned rows.
+  - **schema.sql not idempotent (ERROR 42710)** — added `drop policy if exists`
+    before every `create policy`, so the whole file re-runs cleanly.
+  - **Git** — repo initialised, remote `origin`
+    (`https://github.com/IamAdedo/prepify.git`) added, committed on top of the
+    existing `main` and pushed (fast-forward). Local == remote verified; `.env`
+    confirmed ignored/untracked. Added `.gitignore`, `AGENTS.md`, `CLAUDE.md`.
 - **"Implement all" production hardening:** server-authoritative scoring
   (`examCrypto` + `/api/grade`; answer key encrypted, never sent to client),
   pre-fetch/cache questions in setup with resilient exam load + refresh resume,
