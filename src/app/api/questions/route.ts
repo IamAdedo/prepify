@@ -2,20 +2,31 @@ import { MOCK_JAMB_QUESTIONS } from "@/data/mockJambQuestions";
 import { encryptAnswerKey, AnswerKeyItem } from "@/lib/examCrypto";
 import { NextResponse } from "next/server";
 
+// Maps the app's display subject names to ALOC dev-portal subject slugs.
+// Slugs verified against the live API's `availableSubjects` list
+// (https://dev.aloc.com.ng/api/v1/questions).
 const SUBJECT_MAP: Record<string, string> = {
-  "use of english": "english",
-  "english": "english",
+  "use of english": "english-language",
+  "english": "english-language",
+  "english language": "english-language",
   "mathematics": "mathematics",
   "physics": "physics",
   "chemistry": "chemistry",
   "biology": "biology",
   "economics": "economics",
   "government": "government",
-  "literature in english": "literature",
-  "literature": "literature",
-  "crk": "christianreligion_knowledge",
-  "christian religion knowledge": "christianreligion_knowledge",
-  "commerce": "commerce"
+  "literature in english": "literature-in-english",
+  "literature": "literature-in-english",
+  "crk": "christian-religious-studies",
+  "christian religion knowledge": "christian-religious-studies",
+  "christian religious studies": "christian-religious-studies",
+  "commerce": "commerce",
+  "geography": "geography",
+  "accounting": "accounting",
+  "financial accounting": "accounting",
+  "civic education": "civic-education",
+  "history": "history",
+  "insurance": "insurance",
 };
 
 export async function GET(request: Request) {
@@ -27,34 +38,49 @@ export async function GET(request: Request) {
   try {
     const combinedQuestions: any[] = [];
     const subjectsArray = subjectParam.split(",");
+    let liveCount = 0; // how many questions actually came from ALOC (not mock)
 
     for (const sub of subjectsArray) {
       const normalizedSub = sub.trim().toLowerCase();
       const apiSubject = SUBJECT_MAP[normalizedSub] || normalizedSub;
 
-      let url = `https://questions.aloc.ng/api/v2/q/40?subject=${apiSubject}`;
+      // ALOC developer portal (dev.aloc.com.ng/api/v1). `random=true` returns a
+      // fresh set each call so exams aren't identical; limit maxes out at 40.
+      let url = `https://dev.aloc.com.ng/api/v1/questions?subject=${encodeURIComponent(
+        apiSubject
+      )}&examType=jamb&limit=40&random=true`;
       if (year && year !== "Randomized") {
-        url += `&year=${year}`;
+        url += `&year=${encodeURIComponent(year)}`;
       }
 
       let subjectQuestions: any[] = [];
+      let fromLive = false;
 
       // Attempt live API request if API key is present
       if (apiKey) {
         try {
           const response = await fetch(url, {
-            headers: { "AccessToken": apiKey },
-            next: { revalidate: 3600 },
+            headers: { "X-API-Key": apiKey, Accept: "application/json" },
+            cache: "no-store", // don't cache — random=true must vary per exam
           });
           if (response.ok) {
             const json = await response.json();
-            // ALOC response format: { data: [...] } or direct array
-            subjectQuestions = json.data || json;
+            // ALOC v1 envelope: { data: [...], pagination, meta }
+            const rows = Array.isArray(json?.data) ? json.data : [];
+            if (rows.length > 0) {
+              subjectQuestions = rows;
+              fromLive = true;
+            } else {
+              console.warn(`[ALOC] 200 but no questions for subject: ${sub}`);
+            }
           } else {
-            console.warn(`[ALOC API HTTP Error ${response.status}] for subject: ${sub}`);
+            const body = await response.text().catch(() => "");
+            console.warn(
+              `[ALOC HTTP ${response.status}] subject "${sub}": ${body.slice(0, 200)}`
+            );
           }
         } catch (fetchErr) {
-          console.error(`[ALOC API Network Error] for subject ${sub}:`, fetchErr);
+          console.error(`[ALOC network error] subject "${sub}":`, fetchErr);
         }
       }
 
@@ -73,22 +99,33 @@ export async function GET(request: Request) {
         }
       }
 
-      // Normalize format to conform to standard Question interface
+      if (fromLive) liveCount += subjectQuestions.length;
+
+      // Normalize to the app's Question shape. Handles BOTH the ALOC v1 shape
+      // ({ text, options:{A..D}, correctAnswer }) and the local mock shape
+      // ({ question, option:{a..d}, answer }).
       const formatted = subjectQuestions.map((q: any) => {
         const rawOption = q.option || {};
+        const alocOptions = q.options || {};
+        // ALOC section can be a MathML/HTML blob for maths — only keep it when
+        // it's plain-text context (e.g. a comprehension passage / instruction).
+        const rawSection = q.section || q.passage || "";
+        const section =
+          typeof rawSection === "string" && !rawSection.includes("<") ? rawSection : "";
+        const answerLetter = q.answer || q.correctAnswer || q.correctOption || "a";
         return {
           id: q.id || Math.floor(Math.random() * 100000) + 1,
           subject: sub.trim(),
-          question: q.question || "",
+          question: q.question || q.text || "",
           option: {
-            a: rawOption.a || q.optionA || "",
-            b: rawOption.b || q.optionB || "",
-            c: rawOption.c || q.optionC || "",
-            d: rawOption.d || q.optionD || "",
+            a: rawOption.a || alocOptions.A || q.optionA || "",
+            b: rawOption.b || alocOptions.B || q.optionB || "",
+            c: rawOption.c || alocOptions.C || q.optionC || "",
+            d: rawOption.d || alocOptions.D || q.optionD || "",
           },
-          answer: (q.answer || q.correctOption || "a").toLowerCase(),
-          section: q.section || q.passage || "",
-          explanation: q.explanation || q.solution || ""
+          answer: String(answerLetter).toLowerCase(),
+          section,
+          explanation: q.explanation || q.solution || "",
         };
       });
 
@@ -119,7 +156,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       status: 200,
-      source: apiKey ? "live" : "fallback",
+      source: liveCount > 0 ? "live" : "fallback",
       data: clientQuestions,
       answerToken,
     });

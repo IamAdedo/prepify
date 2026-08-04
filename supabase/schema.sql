@@ -132,16 +132,23 @@ alter table public.leaderboard_entries        enable row level security;
 alter table public.leaderboard_subject_scores enable row level security;
 
 -- Read: anyone (anon + authenticated) can read challenges and scores.
+-- Policies are dropped first so this whole file stays re-runnable (idempotent);
+-- Postgres has no "create policy if not exists".
+drop policy if exists "challenges_read"     on public.weekly_challenges;
 create policy "challenges_read"      on public.weekly_challenges
   for select using (true);
+drop policy if exists "entries_read"        on public.leaderboard_entries;
 create policy "entries_read"         on public.leaderboard_entries
   for select using (true);
+drop policy if exists "subject_scores_read" on public.leaderboard_subject_scores;
 create policy "subject_scores_read"  on public.leaderboard_subject_scores
   for select using (true);
 
 -- Insert: anyone can submit a result row (challenges are managed server-side).
+drop policy if exists "entries_insert"        on public.leaderboard_entries;
 create policy "entries_insert"        on public.leaderboard_entries
   for insert with check (true);
+drop policy if exists "subject_scores_insert" on public.leaderboard_subject_scores;
 create policy "subject_scores_insert" on public.leaderboard_subject_scores
   for insert with check (true);
 
@@ -186,12 +193,16 @@ comment on table public.attempts is
 alter table public.attempts enable row level security;
 
 -- Owners can read/insert/update/delete only their own rows.
+drop policy if exists "attempts_select_own" on public.attempts;
 create policy "attempts_select_own" on public.attempts
   for select using (auth.uid() = user_id);
+drop policy if exists "attempts_insert_own" on public.attempts;
 create policy "attempts_insert_own" on public.attempts
   for insert with check (auth.uid() = user_id);
+drop policy if exists "attempts_update_own" on public.attempts;
 create policy "attempts_update_own" on public.attempts
   for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "attempts_delete_own" on public.attempts;
 create policy "attempts_delete_own" on public.attempts
   for delete using (auth.uid() = user_id);
 
