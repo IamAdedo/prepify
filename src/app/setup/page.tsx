@@ -1,10 +1,10 @@
 "use client";
 
-import { ModeSelector } from "@/components/ModeSelector";
 import { ContactForm } from "@/components/ContactForm";
-import { ExamMode } from "@/types/jamb";
+import { ModeSelector } from "@/components/ModeSelector";
 import { generateRegistrationNumber } from "@/lib/registration";
 import { getIsoWeekKey } from "@/lib/week";
+import { ExamMode } from "@/types/jamb";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
@@ -42,7 +42,7 @@ export default function CandidateSetupPage() {
       // Candidate chooses their own 3 electives — no preselection.
     }
   }, []);
-  
+
   // Interactive Liveness Wizard States
   const [isLivenessModalOpen, setIsLivenessModalOpen] = useState(false);
   const [isCameraReady, setIsCameraReady] = useState(false);
@@ -91,11 +91,11 @@ export default function CandidateSetupPage() {
       setLivenessProgress(progress);
       if (progress >= 100) {
         clearInterval(centerInterval);
-        
+
         // Step 2: Prompt to blink 3 times
         setLivenessStep('BLINK');
         let blinks = 0;
-        
+
         const blinkInterval = setInterval(() => {
           blinks += 1;
           setBlinkCount(blinks);
@@ -199,8 +199,8 @@ export default function CandidateSetupPage() {
       mode === "JAMB_FULL"
         ? 120
         : HEAVY_DRILL.has(singleSubject.toLowerCase())
-        ? 120
-        : 90;
+          ? 120
+          : 90;
 
     // Capitalise the first word of the candidate name (first letter uppercase),
     // leaving the rest of the entry as typed.
@@ -346,7 +346,7 @@ export default function CandidateSetupPage() {
                   ✓ Use of English (Mandatory)
                 </span>
                 <span className="text-xs font-mono text-gray-500 font-bold">
-                  ({selectedElectives.length}/3 Selected)
+                  ({selectedElectives.length + 1}/4 Selected)
                 </span>
               </div>
 
@@ -361,7 +361,7 @@ export default function CandidateSetupPage() {
                       className={`p-2 rounded text-xs font-bold border transition-all ${isSelected
                         ? "bg-[#0A369D] text-white border-[#0A369D] shadow-sm"
                         : "bg-white text-gray-700 border-gray-300 hover:border-gray-400"
-                      }`}
+                        }`}
                     >
                       {isSelected ? "✓ " : "+ "} {sub}
                     </button>
@@ -484,9 +484,9 @@ export default function CandidateSetupPage() {
       {isLivenessModalOpen && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg border-4 border-[#0A369D] max-w-md w-full p-6 shadow-2xl relative animate-fade-in font-sans">
-            
+
             {/* Close button */}
-            <button 
+            <button
               onClick={closeLivenessModal}
               className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 text-xl font-bold font-mono"
             >
@@ -528,7 +528,7 @@ export default function CandidateSetupPage() {
               {livenessStep === 'INIT' && (
                 <p className="text-xs font-semibold text-gray-700 animate-pulse">Setting up secure media channels...</p>
               )}
-              
+
               {livenessStep === 'CENTER' && (
                 <div>
                   <p className="text-xs font-bold text-gray-700 animate-pulse">Step 1: Center your face inside the target frame</p>
