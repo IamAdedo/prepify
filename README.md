@@ -1,123 +1,166 @@
-# Official JAMB UTME CBT Web Examination Platform
+# Prepify — UTME CBT Practice Platform
 
-A production-grade, high-performance, secure, and offline-resilient computer-based test (CBT) web platform modeled after the official Joint Admissions and Matriculation Board (JAMB) terminal interface. Built to run with zero external UI dependencies and optimized for 100% free hosting on Vercel.
+> **Prepify** — "Prepare you for UTME." A free, proctored computer-based test (CBT)
+> practice platform. **Not affiliated with any examination board**; all documents
+> produced are practice-only.
 
----
-
-## 🚀 Key System Features
-
-1. **Retro JAMB Aesthetics:** Faithful styling matching official legacy testing center screens using standard Tailwind CSS `#0A369D` Deep Blue, `#E9F1F7` Soft Blue-Grey background, and `#D9383A` Action Red.
-2. **8-Key Keyboard Navigation:** Complete window-level keystroke navigation mapping standard JAMB CBT controls with default browser scroll-locking:
-   - `A`, `B`, `C`, `D` — Select corresponding option choice.
-   - `P` — Jump to the previous question.
-   - `N` — Jump to the next question.
-   - `S` — Open the Submit Exam overlay.
-   - `Y` — Confirm submission (active only when the submission overlay is open).
-3. **Advanced Anti-Cheating Proctoring Sandbox:**
-   - **Fullscreen Enforcement:** Forces candidates to enter fullscreen to test. Exiting fullscreen logs an infraction.
-   - **Focus / Tab-Blur Detection:** Monitors window blur and tab switching. Switched focus initiates a 15-second grace countdown timer; failure to return in time terminates the session.
-   - **Webcam face monitoring:** Displays a floating webcam feed and simulates candidate presence tracking (0, 1, or 2+ faces in the stream) to trigger security alerts.
-   - **Audio Analyser:** Periodically evaluates microphone dB levels and displays warnings if room quietness is violated.
-   - **Infraction limit:** Accumulates warning infractions; reaching 3 infractions triggers an immediate auto-submission of the candidate's paper.
-   - **Text Protection:** Right-clicks (`contextmenu`), text copy shortcuts (`copy`), and text selection (`selectstart`) are disabled across the workspace.
-4. **Dynamic API & Offline Fallback:**
-   - Proxies questions from the ALOC JAMB API (`https://aloc.ng`) using a server-side route (`/api/questions`) to protect credentials.
-   - Supports multi-subject grouping and custom past question years.
-   - Automatically degrades to a structured offline mock database if API access fails, times out, or if the API key is not configured.
-5. **Score Slip Generator:** Builds a print-optimized candidate grading sheet complete with candidate biometric photo, official watermarks, and verification QR code.
+A production-grade, secure, and offline-resilient CBT web platform that lets
+candidates practice for the UTME under realistic testing-room conditions. Built on
+the Next.js App Router with zero external UI dependencies and optimized for free
+hosting on Vercel. Every integration (questions, database, email) degrades
+gracefully, so the app builds and runs even with no secrets configured.
 
 ---
 
-## 📁 Project Directory Structure
+## 🚀 Key Features
+
+1. **Two exam modes**
+   - **Full UTME:** Use of English (**60 questions**) + 3 candidate-chosen electives
+     (**40 questions** each). **120 minutes** total.
+   - **Single Subject Drill:** **100 questions** on one subject. **90 minutes** —
+     except Mathematics, Physics, and Chemistry, which get **120 minutes**.
+2. **Equal-marks scoring (server-authoritative)**
+   - Each subject is scaled to **100 marks** regardless of its question count. The
+     aggregate is the **sum of subject scaled scores** — `/400` for a full UTME,
+     `/100` for a single drill.
+   - Grading happens on the server (`/api/grade`). The answer key is AES-256-GCM
+     encrypted into a per-exam token and **never reaches the browser**, so scores
+     and the leaderboard can't be spoofed client-side.
+3. **8-Key keyboard navigation** with default-scroll locking:
+   - `A` `B` `C` `D` — select an option · `P` / `N` — previous / next question ·
+     `S` — open submit overlay · `Y` — confirm submission.
+4. **Proctoring sandbox**
+   - **Fullscreen enforcement** for the duration of the exam (clean exit on submit).
+   - **Focus / tab-blur detection** with a grace countdown.
+   - **Webcam monitoring** via the native `FaceDetector` API (graceful `—` when
+     unsupported), plus a biometric verification snapshot below the live feed.
+   - **No-person detection:** flags "candidate left" and auto-submits after 1 min.
+   - **Audio analyser** for ambient-noise warnings (level only — nothing recorded).
+   - **Infraction limit:** consolidated event log; repeated infractions auto-submit.
+   - **Text protection:** right-click, copy, and text selection disabled.
+   - Camera + microphone are released immediately on submit.
+5. **Live questions with offline fallback**
+   - Pulls past questions from the **ALOC developer portal**
+     (`https://dev.aloc.com.ng/api/v1`) via the server route `/api/questions`,
+     which paginates to the exact per-subject target count and shuffles for variety.
+   - Falls back to a structured offline mock bank if the API fails, times out, or
+     no key is configured.
+   - Questions are **pre-fetched and cached** before the exam starts; a
+     refresh/crash mid-exam **resumes in place**.
+6. **Result slips & PDF export**
+   - Print-optimized result slip with candidate biometric photo, dynamic score
+     ceiling, consolidated security-event log, and a verification QR code.
+   - One-click **dual PDF export**: the result slip and a **watermarked** answer
+     review & key breakdown.
+   - Optional **email result slip** via Resend.
+7. **Homepage, leaderboard & weekly challenge**
+   - Landing page with a live **weekly challenge** whose results feed the boards.
+   - **Full-UTME** and **by-subject** leaderboards; a subject with zero
+     participants shows no board. Dedicated `/leaderboard` page.
+8. **Optional accounts & history**
+   - Magic-link (OTP) sign-in. Attempt history syncs across devices when signed in
+     (`/history`), and stays in `localStorage` otherwise. The anonymous flow is
+     fully functional.
+9. **Privacy & consent** — all camera/mic access is gated behind an explicit
+   consent notice describing exactly what is collected.
+
+---
+
+## 📁 Project Structure
 
 ```
 prepify/
 ├── src/
 │   ├── app/
 │   │   ├── api/
-│   │   │   └── questions/
-│   │   │       └── route.ts         # Secure server-side query proxy & fallback normalizer
-│   │   ├── exam/
-│   │   │   └── page.tsx             # Active test workspace & keyboard controller
-│   │   ├── results/
-│   │   │   └── page.tsx             # Candidate dashboard & review grid
-│   │   ├── globals.css              # Global styles & Tailwind base directives
-│   │   ├── layout.tsx               # Root page layout template
-│   │   └── page.tsx                 # Candidate registration portal & setup
-│   ├── components/
-│   │   ├── ModeSelector.tsx         # Component for selecting Single vs 4-Subject Mode
-│   │   ├── QuestionCanvas.tsx       # Render active question text & choices list
-│   │   ├── QuestionMap.tsx          # Numerical question status grid mapped by True IDs
-│   │   ├── ResultSlipPDF.tsx        # Print-optimized result slip layout
-│   │   ├── SubmissionModal.tsx      # Submission verification confirmation overlay
-│   │   ├── TopHeader.tsx            # Candidate details header bar
-│   │   └── WebCamMonitor.tsx        # Floating webcam stream & simulation controller
-│   ├── data/
-│   │   └── mockJambQuestions.ts     # Rich fallback question database for all subjects
-│   ├── hooks/
-│   │   ├── useAdvancedProctoring.ts # Unified proctoring, fullscreen, & event blockers hook
-│   │   ├── useExamTimer.ts          # State timer tracker with auto-submit on 00:00
-│   │   └── useJambKeybindings.ts    # Window-level keydown event listeners
-│   └── types/
-│       └── jamb.ts                  # Shared TypeScript interfaces & configurations
-├── public/                          # Static public assets
-├── tailwind.config.ts               # Color theme definitions
-├── tsconfig.json                    # Compiler settings & path aliases mapping
-├── next.config.mjs                  # Next.js router compilation flags
-└── package.json                     # System dependencies & build scripts
+│   │   │   ├── questions/route.ts    # ALOC proxy (paginated) + mock fallback + answer-token
+│   │   │   ├── grade/route.ts        # Server-authoritative grading + leaderboard write
+│   │   │   ├── contact/route.ts      # Contact form (Resend), rate-limited
+│   │   │   └── email-result/route.ts # Email result slip (Resend), rate-limited
+│   │   ├── exam/page.tsx             # Active test workspace & keyboard controller
+│   │   ├── results/page.tsx          # Result dashboard, analytics & review grid
+│   │   ├── setup/page.tsx            # Candidate setup, consent & biometric wizard
+│   │   ├── leaderboard/page.tsx      # Full-UTME + by-subject leaderboards
+│   │   ├── history/page.tsx          # Per-account attempt history + sign-in
+│   │   ├── layout.tsx                # Root layout
+│   │   └── page.tsx                  # Landing homepage
+│   ├── components/                   # ModeSelector, WebCamMonitor, ResultSlipPDF, …
+│   ├── data/mockJambQuestions.ts     # Offline fallback question bank
+│   ├── hooks/                        # Proctoring, timer, keybindings, auth
+│   ├── lib/                          # examCrypto, leaderboard, pdf, week, registration, supabase
+│   └── types/jamb.ts                 # Shared TypeScript interfaces
+├── supabase/schema.sql              # Postgres schema (leaderboard, challenges, attempts) + RLS
+├── public/                          # Static assets (drop your logo at public/logo.png)
+└── package.json
 ```
 
 ---
 
-## 🛠️ Local Development & Installation
+## 🛠️ Local Development
 
 ### Prerequisites
-- **Node.js** (v18.0.0 or higher recommended)
-- **npm** (v9.0.0 or higher)
+- **Node.js** v18+ · **npm** v9+
 
 ### Steps
 
-1. Clone or navigate into the workspace directory:
-   ```bash
-   cd prepify
-   ```
-
-2. Install the production dependencies:
+1. Install dependencies:
    ```bash
    npm install
    ```
 
-3. Create an environment configuration file:
-   Create a `.env.local` file in the root folder and add your ALOC API key:
+2. Create a `.env.local` in the project root. **Everything is optional** — the app
+   falls back gracefully when any value is absent:
    ```env
-   # Optional: Get your API access token at https://aloc.ng
-   # If left blank, the platform automatically falls back to the offline mock bank.
-   ALOC_API_KEY=your_aloc_access_token_here
-   ```
+   # Questions (ALOC developer portal). Falls back to the offline mock bank if unset.
+   ALOC_API_KEY=
 
-4. Launch the local development server:
+   # Exam answer-key encryption (server-authoritative scoring).
+   # Use a long random string in production; an insecure dev default is used if unset.
+   EXAM_SIGNING_SECRET=
+
+   # Supabase — leaderboard persistence + optional accounts/history.
+   NEXT_PUBLIC_SUPABASE_URL=
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=
+   SUPABASE_SERVICE_ROLE_KEY=        # server-only; lets /api/grade write the board authoritatively
+
+   # Resend — contact form + result-slip email.
+   RESEND_API_KEY=
+   CONTACT_TO_EMAIL=
+   CONTACT_FROM_EMAIL=Prepify <onboarding@resend.dev>
+   ```
+   > ⚠️ Server-only secrets must **not** use the `NEXT_PUBLIC_` prefix. Never commit
+   > `.env*` files — they are gitignored.
+
+3. (Optional) Apply the database schema to enable shared leaderboards and synced
+   history:
+   ```bash
+   supabase db push   # or paste supabase/schema.sql into the Supabase SQL editor
+   ```
+   The schema is idempotent and safe to re-run.
+
+4. Start the dev server:
    ```bash
    npm run dev
    ```
-   Open [http://localhost:3000](http://localhost:3000) in your browser to access the CBT portal.
+   Open [http://localhost:3000](http://localhost:3000).
 
 ---
 
 ## 🚀 Production Build & Deployment
 
-### Build Verification
-Before deploying, verify the production build compiles successfully:
+Verify the build compiles before deploying:
 ```bash
 npm run build
 ```
 
-### Vercel Deployment Strategy
+### Vercel
 
-To deploy this repository to Vercel:
-1. Push your codebase to a remote git repository (GitHub, GitLab, Bitbucket).
-2. Open the Vercel dashboard and click **Add New Project**.
-3. Select this repository.
-4. Under **Environment Variables**, add:
-   - Key: `ALOC_API_KEY`
-   - Value: `your_aloc_access_token`
-5. Click **Deploy**. Vercel will automatically detect the Next.js App Router and complete the deployment.
+1. Push the codebase to a git remote (GitHub, GitLab, Bitbucket).
+2. In the Vercel dashboard, **Add New Project** and select this repository.
+3. Under **Environment Variables**, add any of the keys from the `.env.local`
+   block above that you want live (all optional). For production, set at least
+   `EXAM_SIGNING_SECRET` and `SUPABASE_SERVICE_ROLE_KEY` so scoring and the
+   leaderboard are authoritative.
+4. **Deploy.** Vercel auto-detects the Next.js App Router.
+
+Drop your logo at `public/logo.png` (falls back to `public/prepify-logo.svg`).
