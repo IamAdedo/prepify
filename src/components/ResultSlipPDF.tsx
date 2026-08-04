@@ -41,6 +41,7 @@ export const ResultSlipPDF: React.FC<ResultSlipProps> = ({
   };
 
   return (
+    <>
     <div
       ref={slipRef}
       className="max-w-4xl mx-auto bg-white p-8 rounded border-4 border-[#0A369D] shadow-2xl print:shadow-none print:border-none font-sans select-none"
@@ -66,7 +67,7 @@ export const ResultSlipPDF: React.FC<ResultSlipProps> = ({
               Prepify
             </h1>
             <p className="text-xs font-mono text-gray-600">UTME CBT PRACTICE RESULT SLIP</p>
-            <p className="text-[10px] text-gray-400">Practice document — not an official examination result • prepify.app</p>
+            <p className="text-[10px] text-gray-400">jamb.prepify.vercel.app</p>
           </div>
         </div>
 
@@ -181,8 +182,12 @@ export const ResultSlipPDF: React.FC<ResultSlipProps> = ({
         </div>
       )}
 
-      {/* Print / Export Action Bar */}
-      <div className="flex justify-end space-x-3 print:hidden">
+      {/* Slip content ends here — everything above is captured into the PDF. */}
+      </div>
+
+      {/* Print / Export Action Bar — OUTSIDE slipRef so it never appears in the
+          exported/emailed PDF (html2canvas ignores `print:hidden`). */}
+      <div className="max-w-4xl mx-auto flex justify-end space-x-3 mt-4 print:hidden">
         <button
           onClick={handlePrint}
           disabled={isExporting}
@@ -191,6 +196,6 @@ export const ResultSlipPDF: React.FC<ResultSlipProps> = ({
           {isExporting ? "Preparing PDFs…" : "⬇ Export / Print PDF Result Slip"}
         </button>
       </div>
-    </div>
+    </>
   );
 };

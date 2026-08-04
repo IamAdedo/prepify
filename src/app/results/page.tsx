@@ -229,7 +229,19 @@ export default function ResultsPage() {
         }),
       });
       if (res.ok) {
-        setEmailStatus("sent");
+        const data = await res.json().catch(() => null);
+        if (data?.delivered === false) {
+          // Server ran but no mailer is configured on this deployment.
+          setEmailError(
+            "Email is not enabled on this deployment (mailer not configured)."
+          );
+          setEmailStatus("error");
+        } else if (data?.partial) {
+          setEmailStatus("sent");
+          setEmailError("Some addresses could not be delivered to.");
+        } else {
+          setEmailStatus("sent");
+        }
       } else {
         let reason = "";
         try {
