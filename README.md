@@ -163,4 +163,9 @@ npm run build
    leaderboard are authoritative.
 4. **Deploy.** Vercel auto-detects the Next.js App Router.
 
-Drop your logo at `public/logo.png` (falls back to `public/prepify-logo.svg`).
+---
+
+Project ![Profile Views](https://visitor-badge.laobi.icu/badge?page_id=IamAdedo.agrilink&color=blue&label=Project%20Views) \
+Total developer profile ![Profile Views](https://visitor-badge.laobi.icu/badge?page_id=IamAdedo.IamAdedo&color=blue&label=Total%20Profile%Visitor%20Count)
+
+
