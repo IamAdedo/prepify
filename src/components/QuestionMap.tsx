@@ -1,5 +1,5 @@
 import { Question, UserAnswers } from "@/types/jamb";
-import React from "react";
+import React, { useEffect, useRef } from "react";
 
 interface QuestionMapProps {
   questions: Question[];
@@ -16,6 +16,13 @@ export const QuestionMap: React.FC<QuestionMapProps> = ({
   visitedQuestions,
   onSelectQuestion,
 }) => {
+  // Keep the active question tile visible: scroll it into view within the grid
+  // as the candidate progresses (or jumps around).
+  const activeBtnRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    activeBtnRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [currentIndex]);
+
   return (
     <aside className="w-full lg:w-64 bg-white p-4 rounded border-2 border-gray-300 shadow-inner select-none flex flex-col">
       <h2 className="text-xs font-bold uppercase tracking-wider text-gray-600 border-b pb-2 mb-3">
@@ -39,6 +46,7 @@ export const QuestionMap: React.FC<QuestionMapProps> = ({
           return (
             <button
               key={q.id}
+              ref={isCurrent ? activeBtnRef : null}
               onClick={() => onSelectQuestion(idx)}
               className={`h-9 w-full rounded border text-xs font-mono transition-transform flex items-center justify-center ${btnStyle}`}
             >

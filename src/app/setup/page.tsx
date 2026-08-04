@@ -202,8 +202,15 @@ export default function CandidateSetupPage() {
         ? 120
         : 90;
 
+    // Capitalise the first word of the candidate name (first letter uppercase),
+    // leaving the rest of the entry as typed.
+    const trimmedName = candidateName.trim();
+    const formattedName = trimmedName
+      ? trimmedName.charAt(0).toUpperCase() + trimmedName.slice(1)
+      : trimmedName;
+
     const examConfig = {
-      candidateName,
+      candidateName: formattedName,
       registrationNumber: generateRegistrationNumber(),
       candidatePhotoUrl: candidateSnapshot,
       mode,

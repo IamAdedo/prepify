@@ -192,6 +192,44 @@ Also: drop your logo at `public/logo.png` (falls back to `prepify-logo.svg`).
 ---
 
 ## 5. Changelog
+- **PDF export hardening + page numbers:**
+  - `renderElementToPdf` now derives a **safe html2canvas scale** from the
+    element's size (caps per-axis dimension + total area) so a tall answer
+    review (180-question full UTME) no longer overflows the browser canvas
+    limit and comes back blank/truncated.
+  - Multi-page exports now get a centered **"Page X of Y"** footer (on a faint
+    white strip for legibility). The single-page result slip stays clean — the
+    footer only appears when the document spans more than one page.
+- **Candidate result email via Gmail SMTP (Nodemailer):**
+  - `POST /api/email-result` now sends through **Gmail SMTP** (`nodemailer`,
+    `service: "gmail"`) instead of Resend, so result slips can be emailed to
+    **arbitrary candidate addresses** without owning/verifying a domain. Mail
+    originates from a real, fully-authenticated Gmail account — recipients see no
+    "via" annotation.
+  - Env (server-only): `GMAIL_USER` (e.g. `noreply.prepify.app@gmail.com`),
+    `GMAIL_APP_PASSWORD` (16-char Google App Password, requires 2FA — NOT the
+    login password), optional `CONTACT_FROM_NAME` (display name, default
+    "Prepify"). Missing creds → graceful log-only fallback (`delivered:false`).
+  - Per-recipient private sends via `Promise.allSettled`; real SMTP error
+    `reason` surfaced on total failure (502) and shown inline on the results page.
+  - The **contact form** still uses Resend (`CONTACT_TO_EMAIL` → site owner, so
+    the sandbox sender is fine there).
+- **UX polish:**
+  - Question-navigation grid **auto-scrolls** the active tile into view as the
+    candidate progresses (`QuestionMap` `scrollIntoView` on `currentIndex`).
+  - Candidate name's **first letter is capitalized** at setup (es5-safe, no
+    unicode-flag regex).
+- **Email result: PDF attachment + multiple recipients:**
+  - The results-page "Email My Result Slip" panel now accepts **multiple
+    addresses** (comma/space/semicolon separated, deduped, up to 5) and attaches
+    the rendered **result-slip PDF** to the email.
+  - `src/lib/pdf.ts` refactored: shared `renderElementToPdf` core; new
+    `renderElementToPdfBase64` returns the slip as base64 for attaching.
+  - `POST /api/email-result` now takes `to: string | string[]`, validates/dedupes/
+    caps recipients, sends each recipient a **separate** email (addresses not
+    exposed to each other) via `Promise.allSettled` (partial success tolerated),
+    and forwards the optional PDF `attachment` (Buffer) to Resend. Aggregate
+    ceiling in the email body/subject is now dynamic (`maxAggregate`).
 - **Exam structure & scoring model (per spec):**
   - **Full UTME:** Use of English = **60 questions**, each other subject = **40**;
     120 min total. **Single drill:** **100 questions**, 90 min — except

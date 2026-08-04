@@ -1,7 +1,7 @@
 "use client";
 
 import { ResultSlipPDF } from "@/components/ResultSlipPDF";
-import { exportElementToPdf } from "@/lib/pdf";
+import { exportElementToPdf, renderElementToPdfBase64 } from "@/lib/pdf";
 import { submitLeaderboardEntry } from "@/lib/leaderboard";
 import { saveAttempt } from "@/lib/history";
 import { ExamConfig, GradeResult, GradedQuestion, Question, UserAnswers, AttemptRecord } from "@/types/jamb";
@@ -40,6 +40,7 @@ export default function ResultsPage() {
   const [isGrading, setIsGrading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [emailStatus, setEmailStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [emailError, setEmailError] = useState("");
   const [emailAddr, setEmailAddr] = useState("");
 
   const slipRef = useRef<HTMLDivElement>(null);
@@ -175,31 +176,71 @@ export default function ResultsPage() {
     }
   };
 
-  // Email a copy of the result summary via the optional Resend-backed endpoint.
+  // Email the result slip (optional) — supports multiple recipients and attaches
+  // the rendered result-slip PDF.
   const handleEmailSlip = async () => {
     if (!config || !grade) return;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailAddr)) {
+
+    // Parse a comma / space / semicolon separated list of addresses.
+    const recipients = Array.from(
+      new Set(
+        emailAddr
+          .split(/[,;\s]+/)
+          .map((e) => e.trim().toLowerCase())
+          .filter(Boolean)
+      )
+    );
+    const allValid =
+      recipients.length > 0 &&
+      recipients.every((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+    if (!allValid) {
+      setEmailError("Enter one or more valid email addresses, separated by commas.");
       setEmailStatus("error");
       return;
     }
+
     setEmailStatus("sending");
+    setEmailError("");
     try {
+      // Render the on-screen result slip to a PDF to attach.
+      let attachment: { filename: string; contentBase64: string } | undefined;
+      if (slipRef.current) {
+        const safeName =
+          config.candidateName.replace(/[^a-z0-9]+/gi, "_").slice(0, 40) || "candidate";
+        const contentBase64 = await renderElementToPdfBase64(slipRef.current);
+        attachment = { filename: `Prepify_Result_Slip_${safeName}.pdf`, contentBase64 };
+      }
+
+      const maxAggregate = Math.max(100, grade.subjectScores.length * 100);
       const res = await fetch("/api/email-result", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          to: emailAddr,
+          to: recipients,
           candidateName: config.candidateName,
           registrationNumber: config.registrationNumber,
           mode: config.mode,
           aggregateScore: grade.aggregateScore,
+          maxAggregate,
           totalCorrect: grade.totalCorrect,
           totalQuestions: grade.totalQuestions,
           subjectScores: grade.subjectScores,
+          attachment,
         }),
       });
-      setEmailStatus(res.ok ? "sent" : "error");
+      if (res.ok) {
+        setEmailStatus("sent");
+      } else {
+        let reason = "";
+        try {
+          const data = await res.json();
+          reason = data?.reason || data?.error || "";
+        } catch {/* non-JSON error */}
+        setEmailError(reason);
+        setEmailStatus("error");
+      }
     } catch {
+      setEmailError("Network error while sending. Please try again.");
       setEmailStatus("error");
     }
   };
@@ -333,13 +374,16 @@ export default function ResultsPage() {
       {/* Email the result slip (optional) */}
       <div className="max-w-4xl mx-auto mb-6 print:hidden bg-white rounded-lg border-2 border-gray-300 shadow p-5">
         <h3 className="text-sm font-black text-[#0A369D] uppercase tracking-wide mb-2">Email My Result Slip</h3>
-        <p className="text-[11px] text-gray-500 font-mono mb-3">Send a summary of this result to your inbox.</p>
+        <p className="text-[11px] text-gray-500 font-mono mb-3">
+          Send this result — with the PDF slip attached — to one or more inboxes.
+          Separate multiple addresses with a comma (up to 5).
+        </p>
         <div className="flex flex-col sm:flex-row gap-2">
           <input
-            type="email"
+            type="text"
             value={emailAddr}
-            onChange={(e) => { setEmailAddr(e.target.value); if (emailStatus !== "idle") setEmailStatus("idle"); }}
-            placeholder="you@example.com"
+            onChange={(e) => { setEmailAddr(e.target.value); if (emailStatus !== "idle") { setEmailStatus("idle"); setEmailError(""); } }}
+            placeholder="you@example.com, parent@example.com"
             className="flex-1 border-2 border-gray-300 rounded px-3 py-2 text-sm font-mono focus:border-[#0A369D] outline-none"
           />
           <button
@@ -350,8 +394,12 @@ export default function ResultsPage() {
             {emailStatus === "sending" ? "Sending…" : "Send Result"}
           </button>
         </div>
-        {emailStatus === "sent" && <p className="text-[11px] text-green-700 font-bold font-mono mt-2">✓ Sent. Check your inbox (and spam folder).</p>}
-        {emailStatus === "error" && <p className="text-[11px] text-[#D9383A] font-bold font-mono mt-2">Could not send. Check the address, or email may not be enabled on this deployment.</p>}
+        {emailStatus === "sent" && <p className="text-[11px] text-green-700 font-bold font-mono mt-2">✓ Sent. Check the inbox (and spam folder).</p>}
+        {emailStatus === "error" && (
+          <p className="text-[11px] text-[#D9383A] font-bold font-mono mt-2">
+            Could not send{emailError ? `: ${emailError}` : ". Check the address(es), or email may not be enabled on this deployment."}
+          </p>
+        )}
       </div>
 
       {/* 2. Detailed Performance & Analytics review */}

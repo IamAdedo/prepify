@@ -1,18 +1,24 @@
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 import { SubjectScoreEntry } from "@/types/jamb";
 import { NextResponse } from "next/server";
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 
 interface EmailResultRequest {
-  to: string;
+  to: string | string[];
   candidateName: string;
   registrationNumber: string;
   mode: string;
   aggregateScore: number;
+  maxAggregate?: number;
   totalCorrect: number;
   totalQuestions: number;
   subjectScores: SubjectScoreEntry[];
+  // Optional result-slip PDF to attach (base64, no data-URI prefix).
+  attachment?: { filename: string; contentBase64: string };
 }
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_RECIPIENTS = 5;
 
 // Emails a candidate a copy of their result summary. Uses Resend when
 // configured; otherwise logs and reports delivered:false so the UI degrades
@@ -34,22 +40,58 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  const { to } = body;
-  if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
-    return NextResponse.json({ error: "A valid recipient email is required." }, { status: 400 });
+  // Accept one address or a list; normalize, validate, dedupe, and cap.
+  const rawRecipients = Array.isArray(body.to) ? body.to : [body.to];
+  const recipients = Array.from(
+    new Set(
+      rawRecipients
+        .map((r) => String(r || "").trim().toLowerCase())
+        .filter((r) => EMAIL_RE.test(r))
+    )
+  ).slice(0, MAX_RECIPIENTS);
+
+  if (recipients.length === 0) {
+    return NextResponse.json(
+      { error: "At least one valid recipient email is required." },
+      { status: 400 }
+    );
   }
 
   const candidateName = String(body.candidateName || "Candidate").slice(0, 120);
   const registrationNumber = String(body.registrationNumber || "").slice(0, 40);
   const modeLabel = body.mode === "JAMB_FULL" ? "Full UTME 4-Subject" : "Single Subject Drill";
   const subjectScores = Array.isArray(body.subjectScores) ? body.subjectScores : [];
+  // Ceiling: 100 per subject (400 full UTME, 100 single drill).
+  const maxAggregate =
+    Number(body.maxAggregate) > 0 ? Number(body.maxAggregate) : Math.max(100, subjectScores.length * 100);
 
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.CONTACT_FROM_EMAIL || "Prepify <onboarding@resend.dev>";
+  // Optional result-slip PDF attachment.
+  let attachments: { filename: string; content: Buffer }[] | undefined;
+  if (body.attachment?.contentBase64) {
+    try {
+      const filename = String(body.attachment.filename || "Prepify_Result_Slip.pdf").slice(0, 120);
+      attachments = [{ filename, content: Buffer.from(body.attachment.contentBase64, "base64") }];
+    } catch {
+      // Malformed attachment — send the email without it rather than failing.
+      attachments = undefined;
+    }
+  }
 
-  if (!apiKey) {
-    console.warn("[email-result] Resend not configured; result not emailed to:", to);
-    return NextResponse.json({ ok: true, delivered: false });
+  // Gmail SMTP (Nodemailer). GMAIL_USER + GMAIL_APP_PASSWORD are server-only
+  // secrets (no NEXT_PUBLIC_ prefix). The app password requires 2FA on the
+  // Google account. Gmail rewrites the envelope sender to the authenticated
+  // account, so `from` is always that address (with a friendly display name).
+  const gmailUser = process.env.GMAIL_USER;
+  const gmailPass = process.env.GMAIL_APP_PASSWORD;
+  const fromName = process.env.CONTACT_FROM_NAME || "Prepify";
+  const from = gmailUser ? `${fromName} <${gmailUser}>` : "";
+
+  if (!gmailUser || !gmailPass) {
+    console.warn(
+      "[email-result] Gmail SMTP not configured; result not emailed to:",
+      recipients.join(", ")
+    );
+    return NextResponse.json({ ok: true, delivered: false, recipients: recipients.length });
   }
 
   const rows = subjectScores
@@ -74,7 +116,7 @@ export async function POST(request: Request) {
       </tbody></table>
       <div style="background:#E9F1F7;border:1px solid #b9d0e8;border-radius:8px;padding:14px;text-align:center;margin:14px 0">
         <div style="font-size:11px;color:#0A369D;text-transform:uppercase;letter-spacing:1px">Aggregate Score</div>
-        <div style="font-size:32px;font-weight:bold;color:#0A369D">${body.aggregateScore} <span style="font-size:16px;color:#666">/ 400</span></div>
+        <div style="font-size:32px;font-weight:bold;color:#0A369D">${body.aggregateScore} <span style="font-size:16px;color:#666">/ ${maxAggregate}</span></div>
         <div style="font-size:12px;color:#444">${body.totalCorrect} of ${body.totalQuestions} correct</div>
       </div>
       ${
@@ -92,18 +134,49 @@ export async function POST(request: Request) {
   </div>`;
 
   try {
-    const resend = new Resend(apiKey);
-    const { error } = await resend.emails.send({
-      from,
-      to,
-      subject: `Your Prepify practice result — ${body.aggregateScore}/400`,
-      html,
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: { user: gmailUser, pass: gmailPass },
     });
-    if (error) {
-      console.error("[email-result] Resend error:", error);
-      return NextResponse.json({ error: "Failed to send email." }, { status: 502 });
+
+    const subject = `Your Prepify practice result — ${body.aggregateScore}/${maxAggregate}`;
+    // Send each recipient their OWN email so addresses aren't exposed to each
+    // other. One malformed/rejected address shouldn't sink the rest.
+    const mailAttachments = attachments?.map((a) => ({
+      filename: a.filename,
+      content: a.content,
+    }));
+    const sends = await Promise.allSettled(
+      recipients.map((recipient) =>
+        transporter.sendMail({
+          from,
+          to: recipient,
+          subject,
+          html,
+          attachments: mailAttachments,
+        })
+      )
+    );
+
+    const delivered = sends.filter((s) => s.status === "fulfilled").length;
+    const rejections = sends
+      .filter((s): s is PromiseRejectedResult => s.status === "rejected")
+      .map((s) => s.reason);
+    rejections.forEach((reason) => console.error("[email-result] Gmail SMTP error:", reason));
+
+    if (delivered === 0) {
+      // Surface the real SMTP reason so misconfiguration (e.g. a bad app
+      // password) is diagnosable instead of a generic failure.
+      const first = rejections[0] as { message?: string; code?: string } | undefined;
+      const reason = first?.message || first?.code || "Email provider rejected the request.";
+      return NextResponse.json({ error: "Failed to send email.", reason }, { status: 502 });
     }
-    return NextResponse.json({ ok: true, delivered: true });
+    return NextResponse.json({
+      ok: true,
+      delivered,
+      recipients: recipients.length,
+      partial: delivered < recipients.length,
+    });
   } catch (err) {
     console.error("[email-result] Unexpected error:", err);
     return NextResponse.json({ error: "Unexpected server error." }, { status: 500 });
