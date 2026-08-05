@@ -3,6 +3,11 @@ import { SubjectScoreEntry } from "@/types/jamb";
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 
+// nodemailer needs Node's net/tls sockets — force the Node.js runtime (not Edge)
+// and allow enough wall-clock for the SMTP handshake + send.
+export const runtime = "nodejs";
+export const maxDuration = 30;
+
 interface EmailResultRequest {
   to: string | string[];
   candidateName: string;
@@ -137,6 +142,12 @@ export async function POST(request: Request) {
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: { user: gmailUser, pass: gmailPass },
+      // Serverless (Vercel/Lambda) can hang on SMTP if the provider throttles
+      // the datacenter IP. Fail fast with a real error instead of letting the
+      // function time out into an opaque 504.
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 15_000,
     });
 
     const subject = `Your Prepify practice result — ${body.aggregateScore}/${maxAggregate}`;

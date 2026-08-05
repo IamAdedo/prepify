@@ -6,6 +6,7 @@ import { SubmissionModal } from "@/components/SubmissionModal";
 import { TopHeader } from "@/components/TopHeader";
 import { WebCamMonitor } from "@/components/WebCamMonitor";
 import { useAdvancedProctoring } from "@/hooks/useAdvancedProctoring";
+import { useCandidateGate } from "@/hooks/useCandidateGate";
 import { useExamTimer } from "@/hooks/useExamTimer";
 import { useJambKeybindings } from "@/hooks/useJambKeybindings";
 import { ExamConfig, Question, UserAnswers } from "@/types/jamb";
@@ -14,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export default function ExamWorkspacePage() {
   const router = useRouter();
+  const gate = useCandidateGate();
   const [config, setConfig] = useState<ExamConfig | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
@@ -207,6 +209,17 @@ export default function ExamWorkspacePage() {
       setVisitedQuestions((v) => Array.from(new Set([...v, questions[idx].id])));
     }
   };
+
+  if (gate.checking || gate.blocked) {
+    return (
+      <div className="min-h-screen bg-[#E9F1F7] flex flex-col items-center justify-center font-mono">
+        <div className="w-10 h-10 border-4 border-[#0A369D] border-t-transparent rounded-full animate-spin mb-3"></div>
+        <p className="text-[#0A369D] font-bold text-xs uppercase tracking-wider">
+          {gate.blocked ? "Redirecting to sign-in…" : "Verifying candidate access…"}
+        </p>
+      </div>
+    );
+  }
 
   if (isLoading || !config) {
     return (

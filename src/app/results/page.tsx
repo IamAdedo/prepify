@@ -4,11 +4,18 @@ import { ResultSlipPDF } from "@/components/ResultSlipPDF";
 import { exportElementToPdf, renderElementToPdfBase64 } from "@/lib/pdf";
 import { submitLeaderboardEntry } from "@/lib/leaderboard";
 import { saveAttempt } from "@/lib/history";
+import { useAuth } from "@/hooks/useAuth";
+import { useProductionMode } from "@/components/ProductionModeProvider";
 import { ExamConfig, GradeResult, GradedQuestion, Question, UserAnswers, AttemptRecord } from "@/types/jamb";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 const SITE_NAME = "Prepify — UTME Practice";
+
+// Cap total result-email recipients (matches the server cap in
+// /api/email-result). When signed in, the registered address counts as one.
+const MAX_RECIPIENTS = 5;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Session-scoped localStorage keys wiped on "Clear Session" — deliberately
 // excludes jamb_attempts so the candidate's saved history survives.
@@ -30,6 +37,8 @@ function clearSessionKeys() {
 }
 
 export default function ResultsPage() {
+  const { user } = useAuth();
+  const productionMode = useProductionMode();
   const [config, setConfig] = useState<ExamConfig | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<UserAnswers>({});
@@ -42,6 +51,12 @@ export default function ResultsPage() {
   const [emailStatus, setEmailStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [emailError, setEmailError] = useState("");
   const [emailAddr, setEmailAddr] = useState("");
+  // Extra recipients added on top of the locked registered email (signed-in flow).
+  const [extraRecipients, setExtraRecipients] = useState<string[]>([]);
+
+  // When signed in, the registered email is always a recipient and is locked.
+  const registeredEmail = user?.email || null;
+  const lockedEmail = productionMode && registeredEmail ? registeredEmail : null;
 
   const slipRef = useRef<HTMLDivElement>(null);
   const reviewRef = useRef<HTMLDivElement>(null);
@@ -181,22 +196,44 @@ export default function ResultsPage() {
   const handleEmailSlip = async () => {
     if (!config || !grade) return;
 
-    // Parse a comma / space / semicolon separated list of addresses.
-    const recipients = Array.from(
-      new Set(
-        emailAddr
-          .split(/[,;\s]+/)
-          .map((e) => e.trim().toLowerCase())
-          .filter(Boolean)
-      )
-    );
-    const allValid =
-      recipients.length > 0 &&
-      recipients.every((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
-    if (!allValid) {
-      setEmailError("Enter one or more valid email addresses, separated by commas.");
-      setEmailStatus("error");
-      return;
+    // Build the recipient list. When signed in (production), the locked
+    // registered email is always included, plus any valid extra recipients.
+    // Otherwise, parse the free-text comma/space/semicolon separated input.
+    let recipients: string[];
+    if (lockedEmail) {
+      recipients = Array.from(
+        new Set(
+          [lockedEmail, ...extraRecipients]
+            .map((e) => e.trim().toLowerCase())
+            .filter(Boolean)
+        )
+      );
+      const extrasValid = extraRecipients
+        .map((e) => e.trim())
+        .filter(Boolean)
+        .every((e) => EMAIL_RE.test(e));
+      if (!extrasValid) {
+        setEmailError("One or more additional email addresses are invalid.");
+        setEmailStatus("error");
+        return;
+      }
+    } else {
+      recipients = Array.from(
+        new Set(
+          emailAddr
+            .split(/[,;\s]+/)
+            .map((e) => e.trim().toLowerCase())
+            .filter(Boolean)
+        )
+      );
+      const allValid =
+        recipients.length > 0 &&
+        recipients.every((e) => EMAIL_RE.test(e));
+      if (!allValid) {
+        setEmailError("Enter one or more valid email addresses, separated by commas.");
+        setEmailStatus("error");
+        return;
+      }
     }
 
     setEmailStatus("sending");
@@ -386,26 +423,95 @@ export default function ResultsPage() {
       {/* Email the result slip (optional) */}
       <div className="max-w-4xl mx-auto mb-6 print:hidden bg-white rounded-lg border-2 border-gray-300 shadow p-5">
         <h3 className="text-sm font-black text-[#0A369D] uppercase tracking-wide mb-2">Email My Result Slip</h3>
-        <p className="text-[11px] text-gray-500 font-mono mb-3">
-          Send this result — with the PDF slip attached — to one or more inboxes.
-          Separate multiple addresses with a comma (up to 5).
-        </p>
-        <div className="flex flex-col sm:flex-row gap-2">
-          <input
-            type="text"
-            value={emailAddr}
-            onChange={(e) => { setEmailAddr(e.target.value); if (emailStatus !== "idle") { setEmailStatus("idle"); setEmailError(""); } }}
-            placeholder="you@example.com, parent@example.com"
-            className="flex-1 border-2 border-gray-300 rounded px-3 py-2 text-sm font-mono focus:border-[#0A369D] outline-none"
-          />
-          <button
-            onClick={handleEmailSlip}
-            disabled={emailStatus === "sending"}
-            className="px-5 py-2 bg-[#0A369D] hover:bg-blue-900 disabled:opacity-60 text-white text-xs font-extrabold uppercase rounded shadow whitespace-nowrap"
-          >
-            {emailStatus === "sending" ? "Sending…" : "Send Result"}
-          </button>
-        </div>
+
+        {lockedEmail ? (
+          <>
+            <p className="text-[11px] text-gray-500 font-mono mb-3">
+              A copy — with the PDF slip attached — is always sent to your registered email.
+              Add more recipients below (up to {MAX_RECIPIENTS} total).
+            </p>
+
+            {/* Locked registered email */}
+            <div className="mb-2">
+              <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Registered — always receives a copy</label>
+              <input
+                type="text"
+                value={lockedEmail}
+                disabled
+                aria-label="Registered email (locked)"
+                className="w-full border-2 border-gray-200 bg-gray-100 text-gray-500 rounded px-3 py-2 text-sm font-mono cursor-not-allowed outline-none"
+              />
+            </div>
+
+            {/* Extra recipient rows */}
+            {extraRecipients.map((addr, i) => (
+              <div key={i} className="flex gap-2 mb-2">
+                <input
+                  type="email"
+                  value={addr}
+                  onChange={(e) => {
+                    const next = [...extraRecipients];
+                    next[i] = e.target.value;
+                    setExtraRecipients(next);
+                    if (emailStatus !== "idle") { setEmailStatus("idle"); setEmailError(""); }
+                  }}
+                  placeholder="parent@example.com"
+                  className="flex-1 border-2 border-gray-300 rounded px-3 py-2 text-sm font-mono focus:border-[#0A369D] outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setExtraRecipients(extraRecipients.filter((_, idx) => idx !== i))}
+                  aria-label="Remove recipient"
+                  className="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-bold rounded"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+
+            <div className="flex flex-col sm:flex-row gap-2 mt-2">
+              {extraRecipients.length + 1 < MAX_RECIPIENTS && (
+                <button
+                  type="button"
+                  onClick={() => setExtraRecipients([...extraRecipients, ""])}
+                  className="px-4 py-2 bg-white border-2 border-[#0A369D] hover:bg-[#E9F1F7] text-[#0A369D] text-xs font-bold uppercase rounded"
+                >
+                  + Add another recipient
+                </button>
+              )}
+              <button
+                onClick={handleEmailSlip}
+                disabled={emailStatus === "sending"}
+                className="sm:ml-auto px-5 py-2 bg-[#0A369D] hover:bg-blue-900 disabled:opacity-60 text-white text-xs font-extrabold uppercase rounded shadow whitespace-nowrap"
+              >
+                {emailStatus === "sending" ? "Sending…" : "Send Result"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-[11px] text-gray-500 font-mono mb-3">
+              Send this result — with the PDF slip attached — to one or more inboxes.
+              Separate multiple addresses with a comma (up to {MAX_RECIPIENTS}).
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                value={emailAddr}
+                onChange={(e) => { setEmailAddr(e.target.value); if (emailStatus !== "idle") { setEmailStatus("idle"); setEmailError(""); } }}
+                placeholder="you@example.com, parent@example.com"
+                className="flex-1 border-2 border-gray-300 rounded px-3 py-2 text-sm font-mono focus:border-[#0A369D] outline-none"
+              />
+              <button
+                onClick={handleEmailSlip}
+                disabled={emailStatus === "sending"}
+                className="px-5 py-2 bg-[#0A369D] hover:bg-blue-900 disabled:opacity-60 text-white text-xs font-extrabold uppercase rounded shadow whitespace-nowrap"
+              >
+                {emailStatus === "sending" ? "Sending…" : "Send Result"}
+              </button>
+            </div>
+          </>
+        )}
         {emailStatus === "sent" && <p className="text-[11px] text-green-700 font-bold font-mono mt-2">✓ Sent. Check the inbox (and spam folder).</p>}
         {emailStatus === "error" && (
           <p className="text-[11px] text-[#D9383A] font-bold font-mono mt-2">

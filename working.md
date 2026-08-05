@@ -48,6 +48,8 @@ progresses. Legend: ✅ done · 🟡 in progress · ⬜ not started.
 | 34 | Camera/biometric consent notice (gates capture) | ✅ |
 | 35 | Email result slip via Resend | ✅ |
 | 36 | Rate-limit `/api/contact` (+ `/api/email-result`) | ✅ |
+| 37 | `PRODUCTION_KEY=yes` → candidate login/registration portal gating practice flow | ✅ |
+| 38 | Signed-in email pre-filled + locked everywhere email is needed; add-more recipients | ✅ |
 
 ---
 
@@ -64,6 +66,33 @@ progresses. Legend: ✅ done · 🟡 in progress · ⬜ not started.
 - `/setup` — candidate setup (moved from `/`), supports `?challenge=weekly`.
 - `/exam` — enforced fullscreen gate + auto-request.
 - `/results` — logo, consolidated events, dual PDF export, weekly-challenge submit.
+- `/portal` — candidate login/registration portal (production mode).
+
+### Production mode (`PRODUCTION_KEY=yes`)
+- **Deployment switch** — server-only env var `PRODUCTION_KEY`; read in
+  `src/app/layout.tsx` and bridged to client components as a boolean via
+  `ProductionModeProvider` / `useProductionMode()`
+  (`src/components/ProductionModeProvider.tsx`). Any value other than `yes`
+  (incl. unset) keeps the app fully anonymous — no behavior change.
+- **Candidate portal** (`/portal`) — email+password **registration** (full name,
+  email, phone, password) and **sign-in**, plus a passwordless **magic-link**
+  fallback. Built on the existing Supabase auth (`useAuth.ts`, extended with
+  `signUpWithPassword` / `signInWithPassword` / `fullName`).
+- **Practice-flow gate** — `useCandidateGate()` redirects anonymous visitors from
+  `/setup` and `/exam` to `/portal?redirect=…` when production mode + Supabase are
+  both active. Landing and leaderboard stay public.
+- **Graceful degrade** — if `PRODUCTION_KEY=yes` but Supabase isn't configured, the
+  gate is a no-op (app stays usable anonymously) and `/portal` shows an
+  "accounts not available" notice.
+- **Locked email everywhere email is needed** — when signed in, the registered
+  address is pre-filled and greyed/disabled and always receives a copy:
+  - Results "Email My Result Slip" (`results/page.tsx`): locked registered email +
+    "＋ Add another recipient" rows (capped at `MAX_RECIPIENTS = 5` total). Falls
+    back to the free-text multi-recipient input when anonymous.
+  - Contact form (`ContactForm.tsx`): email field locked to the signed-in address;
+    name pre-filled from the account.
+- Setup pre-fills `candidateName` from the account's full name (editable), and the
+  setup header shows an account/sign-in affordance in production mode.
 
 ### De-demo (real product, not a simulation/demo)
 - **Live proctor feed** (`WebCamMonitor.tsx`) — removed the "Simulation Admin"

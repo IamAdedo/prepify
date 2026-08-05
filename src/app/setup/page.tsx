@@ -2,6 +2,9 @@
 
 import { ContactForm } from "@/components/ContactForm";
 import { ModeSelector } from "@/components/ModeSelector";
+import { useCandidateGate } from "@/hooks/useCandidateGate";
+import { useAuth } from "@/hooks/useAuth";
+import { useProductionMode } from "@/components/ProductionModeProvider";
 import { generateRegistrationNumber } from "@/lib/registration";
 import { getIsoWeekKey } from "@/lib/week";
 import { ExamMode } from "@/types/jamb";
@@ -17,6 +20,9 @@ const AVAILABLE_YEARS = ["Randomized", "2023", "2022", "2021", "2020", "2019"];
 
 export default function CandidateSetupPage() {
   const router = useRouter();
+  const gate = useCandidateGate();
+  const productionMode = useProductionMode();
+  const { user } = useAuth();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -42,6 +48,14 @@ export default function CandidateSetupPage() {
       // Candidate chooses their own 3 electives — no preselection.
     }
   }, []);
+
+  // In production mode, pre-fill the candidate name from the signed-in account
+  // if the field is still empty. Stays editable.
+  useEffect(() => {
+    if (productionMode && user?.fullName) {
+      setCandidateName((prev) => prev || user.fullName || "");
+    }
+  }, [productionMode, user]);
 
   // Interactive Liveness Wizard States
   const [isLivenessModalOpen, setIsLivenessModalOpen] = useState(false);
@@ -260,6 +274,19 @@ export default function CandidateSetupPage() {
     }
   };
 
+  // Production-mode sign-in gate: show a spinner while checking auth or while
+  // redirecting an anonymous visitor to the portal.
+  if (gate.checking || gate.blocked) {
+    return (
+      <div className="min-h-screen bg-[#E9F1F7] flex flex-col items-center justify-center font-mono select-none">
+        <div className="w-10 h-10 border-4 border-[#0A369D] border-t-transparent rounded-full animate-spin mb-3"></div>
+        <p className="text-[#0A369D] font-bold text-xs uppercase tracking-wider">
+          {gate.blocked ? "Redirecting to sign-in…" : "Verifying candidate access…"}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#E9F1F7] flex flex-col font-sans select-none">
 
@@ -285,12 +312,24 @@ export default function CandidateSetupPage() {
             <a href="#contact" className="hover:text-[#FFC107] transition-colors">Support</a>
           </nav>
 
-          <a
-            href="#portal"
-            className="px-4 py-2 bg-[#D9383A] hover:bg-red-700 text-white font-bold text-xs uppercase rounded shadow transition-transform hover:scale-105"
-          >
-            Access Terminal
-          </a>
+          {productionMode && user ? (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="hidden sm:inline text-gray-200 font-mono">{user.email}</span>
+              <a
+                href="/portal"
+                className="px-4 py-2 bg-[#D9383A] hover:bg-red-700 text-white font-bold uppercase rounded shadow transition-transform hover:scale-105"
+              >
+                Account
+              </a>
+            </div>
+          ) : (
+            <a
+              href={productionMode ? "/portal" : "#portal"}
+              className="px-4 py-2 bg-[#D9383A] hover:bg-red-700 text-white font-bold text-xs uppercase rounded shadow transition-transform hover:scale-105"
+            >
+              {productionMode ? "Sign In / Register" : "Access Terminal"}
+            </a>
+          )}
         </div>
       </header>
 

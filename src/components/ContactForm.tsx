@@ -1,12 +1,29 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { useProductionMode } from "@/components/ProductionModeProvider";
 
 // Contact / support form wired to the Resend-backed /api/contact route.
 export const ContactForm: React.FC = () => {
+  const { user } = useAuth();
+  const productionMode = useProductionMode();
   const [form, setForm] = useState({ name: "", email: "", msg: "" });
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [error, setError] = useState("");
+
+  // In production mode, lock the email field to the signed-in address.
+  const lockedEmail = productionMode && user?.email ? user.email : null;
+
+  // Pre-fill name/email from the signed-in account when available.
+  useEffect(() => {
+    if (!user) return;
+    setForm((prev) => ({
+      ...prev,
+      name: prev.name || user.fullName || "",
+      email: lockedEmail || prev.email || user.email || "",
+    }));
+  }, [user, lockedEmail]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,7 +38,7 @@ export const ContactForm: React.FC = () => {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed to send message.");
       setStatus("sent");
-      setForm({ name: "", email: "", msg: "" });
+      setForm({ name: "", email: lockedEmail || "", msg: "" });
     } catch (err: any) {
       setStatus("error");
       setError(err.message || "Something went wrong. Please try again.");
@@ -45,7 +62,8 @@ export const ContactForm: React.FC = () => {
           required
           value={form.email}
           onChange={(e) => setForm({ ...form, email: e.target.value })}
-          className="p-2.5 border rounded text-xs outline-none focus:border-[#0A369D]"
+          disabled={!!lockedEmail}
+          className={`p-2.5 border rounded text-xs outline-none focus:border-[#0A369D] ${lockedEmail ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
         />
       </div>
       <textarea

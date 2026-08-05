@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ProductionModeProvider } from "@/components/ProductionModeProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -11,10 +12,16 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // PRODUCTION_KEY is a server-only env var; resolve it here and pass the plain
+  // boolean down to client components via context.
+  const productionMode = process.env.PRODUCTION_KEY === "yes";
+
   return (
     <html lang="en" className="scroll-smooth">
       <body className="antialiased min-h-screen bg-[#E9F1F7] text-[#1A202C]">
-        {children}
+        <ProductionModeProvider value={productionMode}>
+          {children}
+        </ProductionModeProvider>
       </body>
     </html>
   );
