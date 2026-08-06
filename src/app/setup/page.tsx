@@ -390,8 +390,8 @@ export default function CandidateSetupPage() {
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                <span className="bg-[#0A369D] text-white text-xs font-bold px-3 py-1.5 rounded">
-                  ✓ Use of English (Mandatory)
+                <span className="bg-[#0A369D] text-white border-[#0A369D] shadow-sm">
+                  ✓ Use of English
                 </span>
                 {AVAILABLE_SUBJECTS.map((sub) => {
                   const isSelected = selectedElectives.includes(sub);
