@@ -2,9 +2,9 @@
 
 import { ContactForm } from "@/components/ContactForm";
 import { ModeSelector } from "@/components/ModeSelector";
-import { useCandidateGate } from "@/hooks/useCandidateGate";
-import { useAuth } from "@/hooks/useAuth";
 import { useProductionMode } from "@/components/ProductionModeProvider";
+import { useAuth } from "@/hooks/useAuth";
+import { useCandidateGate } from "@/hooks/useCandidateGate";
 import { generateRegistrationNumber } from "@/lib/registration";
 import { getIsoWeekKey } from "@/lib/week";
 import { ExamMode } from "@/types/jamb";
@@ -367,7 +367,7 @@ export default function CandidateSetupPage() {
             <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Candidate Full Name (Surname First)</label>
             <input
               type="text"
-              value={candidateName}
+              value={candidateName ? candidateName.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ') : ''}
               onChange={(e) => setCandidateName(e.target.value)}
               placeholder="e.g. ADEBAYO, OLUMIDE CHUKWUEMEKA"
               className="w-full p-3 border-2 border-gray-300 rounded font-mono text-sm focus:border-[#0A369D] outline-none bg-gray-50 focus:bg-white transition-colors"
@@ -378,18 +378,21 @@ export default function CandidateSetupPage() {
           {mode === "JAMB_FULL" ? (
             <div className="mb-6 bg-gray-50 p-4 rounded border border-gray-200">
               <h3 className="text-xs font-bold uppercase text-[#0A369D] mb-2">
-                Select Exactly 3 Elective Subjects
+                Select Exactly 3 Elective Subjects, Use of English is Mandatory
               </h3>
               <div className="flex items-center space-x-2 mb-3">
-                <span className="bg-[#0A369D] text-white text-xs font-bold px-3 py-1.5 rounded">
+                {/* <span className="bg-[#0A369D] text-white text-xs font-bold px-3 py-1.5 rounded">
                   ✓ Use of English (Mandatory)
-                </span>
+                </span> */}
                 <span className="text-xs font-mono text-gray-500 font-bold">
                   ({selectedElectives.length + 1}/4 Selected)
                 </span>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <span className="bg-[#0A369D] text-white text-xs font-bold px-3 py-1.5 rounded">
+                  ✓ Use of English (Mandatory)
+                </span>
                 {AVAILABLE_SUBJECTS.map((sub) => {
                   const isSelected = selectedElectives.includes(sub);
                   return (
